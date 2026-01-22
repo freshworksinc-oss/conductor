@@ -213,27 +213,17 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         // Get the existing workflow JSON (with all current fields)
         String existingWorkflowJson = statusChangeNotification.toJsonStringWithInputOutput();
 
+        // DEBUG: Log the actual JSON structure
+        LOGGER.info(
+                "DEBUG - Workflow JSON before extracting accountId for Workflow ID {}: {}",
+                statusChangeNotification.getWorkflowId(),
+                existingWorkflowJson);
+
         // Parse existing JSON into JsonNode to extract accountId
         JsonNode existingPayload = objectMapper.readTree(existingWorkflowJson);
 
         // Extract accountId from workflow input (REQUIRED for Central)
-        Object accountId = null;
-        JsonNode inputNode = existingPayload.get("input");
-        if (inputNode != null && inputNode.isTextual()) {
-            // Input is a JSON string, parse it
-            try {
-                JsonNode inputData = objectMapper.readTree(inputNode.asText());
-                JsonNode accountIdNode = inputData.get("accountId");
-                if (accountIdNode != null) {
-                    accountId = accountIdNode.asText();
-                }
-            } catch (Exception e) {
-                LOGGER.debug(
-                        "Failed to parse input JSON for workflow {}",
-                        statusChangeNotification.getWorkflowId(),
-                        e);
-            }
-        }
+        Object accountId = extractAccountId(existingPayload);
 
         if (!Objects.nonNull(accountId)) {
             LOGGER.error(
@@ -273,5 +263,42 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         LOGGER.debug(
                 "Workflow {} publish to Central is successful.",
                 statusChangeNotification.getWorkflowId());
+    }
+
+    /**
+     * Extracts accountId from the workflow payload. Tries multiple locations: 1. Workflow input (as
+     * JSON object) 2. Workflow input (as JSON string)
+     *
+     * @param payload The workflow payload JSON
+     * @return The accountId if found, null otherwise
+     */
+    private Object extractAccountId(JsonNode payload) {
+        // Try 1: Check workflow input as JSON object
+        JsonNode inputNode = payload.get("input");
+        if (inputNode != null && inputNode.isObject()) {
+            JsonNode accountIdNode = inputNode.get("accountId");
+            if (accountIdNode != null && !accountIdNode.isNull()) {
+                return accountIdNode.asText();
+            }
+        }
+
+        // Try 2: Check workflow input as JSON string
+        if (inputNode != null && inputNode.isTextual()) {
+            try {
+                JsonNode inputData = objectMapper.readTree(inputNode.asText());
+                JsonNode accountIdNode = inputData.get("accountId");
+                if (accountIdNode != null && !accountIdNode.isNull()) {
+                    return accountIdNode.asText();
+                }
+            } catch (Exception e) {
+                LOGGER.debug("Failed to parse workflow input as JSON string", e);
+            }
+        }
+
+        LOGGER.error(
+                "DEBUG - Account ID not found. Input node type: {}, Input node content: {}",
+                inputNode != null ? inputNode.getNodeType() : "NULL",
+                inputNode);
+        return null;
     }
 }

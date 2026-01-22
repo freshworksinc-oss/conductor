@@ -14,6 +14,7 @@ package com.netflix.conductor.contribs.listener;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 
@@ -27,10 +28,17 @@ import com.netflix.conductor.core.dal.ExecutionDAOFacade;
 import com.netflix.conductor.core.listener.TaskStatusListener;
 import com.netflix.conductor.model.TaskModel;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 @Singleton
 public class TaskStatusPublisher implements TaskStatusListener {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskStatusPublisher.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String PAYLOAD_VERSION = "1.0";
+    private static final String TASK_PAYLOAD_TYPE = "journey_conductor_task_event";
     private static final Integer QDEPTH =
             Integer.parseInt(
                     System.getenv().getOrDefault("ENV_TASK_NOTIFICATION_QUEUE_SIZE", "50"));
@@ -192,11 +200,64 @@ public class TaskStatusPublisher implements TaskStatusListener {
     }
 
     private void publishTaskNotification(TaskNotification taskNotification) throws IOException {
-        String jsonTask = taskNotification.toJsonStringWithInputOutput();
+        // Get the existing task JSON (with all current fields)
+        String existingTaskJson = taskNotification.toJsonStringWithInputOutput();
+
+        // Parse existing JSON into JsonNode to extract accountId
+        JsonNode existingPayload = objectMapper.readTree(existingTaskJson);
+
+        // Extract accountId from task input (REQUIRED for Central)
+        Object accountId = null;
+        JsonNode inputNode = existingPayload.get("input");
+        if (inputNode != null && inputNode.isTextual()) {
+            // Input is a JSON string, parse it
+            try {
+                JsonNode inputData = objectMapper.readTree(inputNode.asText());
+                JsonNode accountIdNode = inputData.get("accountId");
+                if (accountIdNode != null) {
+                    accountId = accountIdNode.asText();
+                }
+            } catch (Exception e) {
+                LOGGER.debug(
+                        "Failed to parse input JSON for task {}", taskNotification.getTaskId(), e);
+            }
+        }
+
+        if (!Objects.nonNull(accountId)) {
+            LOGGER.error(
+                    "Account ID is missing in task input. Task ID: {}. Sending without Central envelope.",
+                    taskNotification.getTaskId());
+            // Send as-is without envelope (backward compatibility)
+            rcm.postNotification(
+                    RestClientManager.NotificationType.TASK,
+                    existingTaskJson,
+                    taskNotification.getTaskId(),
+                    null);
+            return;
+        }
+
+        // Wrap in Central envelope
+        ObjectNode centralMessage = objectMapper.createObjectNode();
+        centralMessage.put("account_id", String.valueOf(accountId));
+        centralMessage.put("payload_type", TASK_PAYLOAD_TYPE);
+        centralMessage.put("payload_version", PAYLOAD_VERSION);
+        centralMessage.set("payload", existingPayload); // Keep ALL existing fields
+
+        String wrappedJson = centralMessage.toString();
+
+        LOGGER.info(
+                "Publishing Task to Central with envelope. Task ID: {}, Account ID: {}",
+                taskNotification.getTaskId(),
+                accountId);
+        LOGGER.info("Task Event Payload being published to Central: {}", wrappedJson);
+
+        // Send wrapped JSON to Central
         rcm.postNotification(
                 RestClientManager.NotificationType.TASK,
-                jsonTask,
+                wrappedJson,
                 taskNotification.getTaskId(),
                 null);
+
+        LOGGER.debug("Task {} publish to Central is successful.", taskNotification.getTaskId());
     }
 }

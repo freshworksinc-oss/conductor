@@ -71,6 +71,11 @@ public class TaskStatusPublisher implements TaskStatusListener {
             while (true) {
                 try {
                     task = blockingQueue.take();
+                    // Extract accountId from TaskModel BEFORE serialization
+                    Object accountId =
+                            task.getInputData() != null
+                                    ? task.getInputData().get("accountId")
+                                    : null;
                     taskNotification = new TaskNotification(task.toTask());
                     String jsonTask = taskNotification.toJsonString();
                     LOGGER.info("Publishing TaskNotification: {}", jsonTask);
@@ -80,7 +85,7 @@ public class TaskStatusPublisher implements TaskStatusListener {
                                 taskNotification.getTaskId());
                         continue;
                     }
-                    publishTaskNotification(taskNotification);
+                    publishTaskNotification(taskNotification, accountId);
                     LOGGER.debug("Task {} publish is successful.", taskNotification.getTaskId());
                     Thread.sleep(5);
                 } catch (Exception e) {
@@ -199,21 +204,10 @@ public class TaskStatusPublisher implements TaskStatusListener {
         }
     }
 
-    private void publishTaskNotification(TaskNotification taskNotification) throws IOException {
+    private void publishTaskNotification(TaskNotification taskNotification, Object accountId)
+            throws IOException {
         // Get the existing task JSON (with all current fields)
         String existingTaskJson = taskNotification.toJsonStringWithInputOutput();
-
-        // DEBUG: Log the actual JSON structure
-        LOGGER.info(
-                "DEBUG - Task JSON before extracting accountId for Task ID {}: {}",
-                taskNotification.getTaskId(),
-                existingTaskJson);
-
-        // Parse existing JSON into JsonNode to extract accountId
-        JsonNode existingPayload = objectMapper.readTree(existingTaskJson);
-
-        // Extract accountId from task input (REQUIRED for Central)
-        Object accountId = extractAccountId(existingPayload);
 
         if (!Objects.nonNull(accountId)) {
             LOGGER.error(
@@ -227,6 +221,9 @@ public class TaskStatusPublisher implements TaskStatusListener {
                     null);
             return;
         }
+
+        // Parse existing JSON into JsonNode for wrapping
+        JsonNode existingPayload = objectMapper.readTree(existingTaskJson);
 
         // Wrap in Central envelope
         ObjectNode centralMessage = objectMapper.createObjectNode();
@@ -251,67 +248,5 @@ public class TaskStatusPublisher implements TaskStatusListener {
                 null);
 
         LOGGER.debug("Task {} publish to Central is successful.", taskNotification.getTaskId());
-    }
-
-    /**
-     * Extracts accountId from the task payload. Tries multiple locations: 1. Task input (as JSON
-     * object) 2. Task input (as JSON string) 3. Workflow input (as JSON object) 4. Workflow input
-     * (as JSON string)
-     *
-     * @param payload The task payload JSON
-     * @return The accountId if found, null otherwise
-     */
-    private Object extractAccountId(JsonNode payload) {
-        // Try 1: Check task input as JSON object
-        JsonNode inputNode = payload.get("input");
-        if (inputNode != null && inputNode.isObject()) {
-            JsonNode accountIdNode = inputNode.get("accountId");
-            if (accountIdNode != null && !accountIdNode.isNull()) {
-                return accountIdNode.asText();
-            }
-        }
-
-        // Try 2: Check task input as JSON string
-        if (inputNode != null && inputNode.isTextual()) {
-            try {
-                JsonNode inputData = objectMapper.readTree(inputNode.asText());
-                JsonNode accountIdNode = inputData.get("accountId");
-                if (accountIdNode != null && !accountIdNode.isNull()) {
-                    return accountIdNode.asText();
-                }
-            } catch (Exception e) {
-                LOGGER.debug("Failed to parse task input as JSON string", e);
-            }
-        }
-
-        // Try 3: Check workflow input as JSON object
-        JsonNode workflowInputNode = payload.get("workflowInput");
-        if (workflowInputNode != null && workflowInputNode.isObject()) {
-            JsonNode accountIdNode = workflowInputNode.get("accountId");
-            if (accountIdNode != null && !accountIdNode.isNull()) {
-                return accountIdNode.asText();
-            }
-        }
-
-        // Try 4: Check workflow input as JSON string
-        if (workflowInputNode != null && workflowInputNode.isTextual()) {
-            try {
-                JsonNode workflowInputData = objectMapper.readTree(workflowInputNode.asText());
-                JsonNode accountIdNode = workflowInputData.get("accountId");
-                if (accountIdNode != null && !accountIdNode.isNull()) {
-                    return accountIdNode.asText();
-                }
-            } catch (Exception e) {
-                LOGGER.debug("Failed to parse workflow input as JSON string", e);
-            }
-        }
-
-        LOGGER.error(
-                "DEBUG - Account ID not found. Input node type: {}, Input node: {}, Workflow input node type: {}, Workflow input node: {}",
-                inputNode != null ? inputNode.getNodeType() : "NULL",
-                inputNode,
-                workflowInputNode != null ? workflowInputNode.getNodeType() : "NULL",
-                workflowInputNode);
-        return null;
     }
 }

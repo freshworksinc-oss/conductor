@@ -14,6 +14,7 @@ package com.netflix.conductor.contribs.listener.statuschange;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 
@@ -28,10 +29,17 @@ import com.netflix.conductor.core.dal.ExecutionDAOFacade;
 import com.netflix.conductor.core.listener.WorkflowStatusListener;
 import com.netflix.conductor.model.WorkflowModel;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 @Singleton
 public class StatusChangePublisher implements WorkflowStatusListener {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(StatusChangePublisher.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String PAYLOAD_VERSION = "1.0";
+    private static final String WORKFLOW_PAYLOAD_TYPE = "journey_conductor_workflow_event";
     private static final Integer QDEPTH =
             Integer.parseInt(
                     System.getenv().getOrDefault("ENV_WORKFLOW_NOTIFICATION_QUEUE_SIZE", "50"));
@@ -202,11 +210,68 @@ public class StatusChangePublisher implements WorkflowStatusListener {
 
     private void publishStatusChangeNotification(StatusChangeNotification statusChangeNotification)
             throws IOException {
-        String jsonWorkflow = statusChangeNotification.toJsonStringWithInputOutput();
+        // Get the existing workflow JSON (with all current fields)
+        String existingWorkflowJson = statusChangeNotification.toJsonStringWithInputOutput();
+
+        // Parse existing JSON into JsonNode to extract accountId
+        JsonNode existingPayload = objectMapper.readTree(existingWorkflowJson);
+
+        // Extract accountId from workflow input (REQUIRED for Central)
+        Object accountId = null;
+        JsonNode inputNode = existingPayload.get("input");
+        if (inputNode != null && inputNode.isTextual()) {
+            // Input is a JSON string, parse it
+            try {
+                JsonNode inputData = objectMapper.readTree(inputNode.asText());
+                JsonNode accountIdNode = inputData.get("accountId");
+                if (accountIdNode != null) {
+                    accountId = accountIdNode.asText();
+                }
+            } catch (Exception e) {
+                LOGGER.debug(
+                        "Failed to parse input JSON for workflow {}",
+                        statusChangeNotification.getWorkflowId(),
+                        e);
+            }
+        }
+
+        if (!Objects.nonNull(accountId)) {
+            LOGGER.error(
+                    "Account ID is missing in workflow input. Workflow ID: {}. Sending without Central envelope.",
+                    statusChangeNotification.getWorkflowId());
+            // Send as-is without envelope (backward compatibility)
+            rcm.postNotification(
+                    RestClientManager.NotificationType.WORKFLOW,
+                    existingWorkflowJson,
+                    statusChangeNotification.getWorkflowId(),
+                    statusChangeNotification.getStatusNotifier());
+            return;
+        }
+
+        // Wrap in Central envelope
+        ObjectNode centralMessage = objectMapper.createObjectNode();
+        centralMessage.put("account_id", String.valueOf(accountId));
+        centralMessage.put("payload_type", WORKFLOW_PAYLOAD_TYPE);
+        centralMessage.put("payload_version", PAYLOAD_VERSION);
+        centralMessage.set("payload", existingPayload); // Keep ALL existing fields
+
+        String wrappedJson = centralMessage.toString();
+
+        LOGGER.info(
+                "Publishing Workflow to Central with envelope. Workflow ID: {}, Account ID: {}",
+                statusChangeNotification.getWorkflowId(),
+                accountId);
+        LOGGER.info("Workflow Event Payload being published to Central: {}", wrappedJson);
+
+        // Send wrapped JSON to Central
         rcm.postNotification(
                 RestClientManager.NotificationType.WORKFLOW,
-                jsonWorkflow,
+                wrappedJson,
                 statusChangeNotification.getWorkflowId(),
                 statusChangeNotification.getStatusNotifier());
+
+        LOGGER.debug(
+                "Workflow {} publish to Central is successful.",
+                statusChangeNotification.getWorkflowId());
     }
 }

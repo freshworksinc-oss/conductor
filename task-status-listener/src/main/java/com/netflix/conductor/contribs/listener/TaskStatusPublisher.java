@@ -14,6 +14,7 @@ package com.netflix.conductor.contribs.listener;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 
@@ -27,10 +28,17 @@ import com.netflix.conductor.core.dal.ExecutionDAOFacade;
 import com.netflix.conductor.core.listener.TaskStatusListener;
 import com.netflix.conductor.model.TaskModel;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 @Singleton
 public class TaskStatusPublisher implements TaskStatusListener {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskStatusPublisher.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String PAYLOAD_VERSION = "1.0";
+    private static final String TASK_PAYLOAD_TYPE = "journey_conductor_task_event";
     private static final Integer QDEPTH =
             Integer.parseInt(
                     System.getenv().getOrDefault("ENV_TASK_NOTIFICATION_QUEUE_SIZE", "50"));
@@ -63,6 +71,11 @@ public class TaskStatusPublisher implements TaskStatusListener {
             while (true) {
                 try {
                     task = blockingQueue.take();
+                    // Extract accountId from TaskModel BEFORE serialization
+                    Object accountId =
+                            task.getInputData() != null
+                                    ? task.getInputData().get("accountId")
+                                    : null;
                     taskNotification = new TaskNotification(task.toTask());
                     String jsonTask = taskNotification.toJsonString();
                     LOGGER.info("Publishing TaskNotification: {}", jsonTask);
@@ -72,7 +85,7 @@ public class TaskStatusPublisher implements TaskStatusListener {
                                 taskNotification.getTaskId());
                         continue;
                     }
-                    publishTaskNotification(taskNotification);
+                    publishTaskNotification(taskNotification, accountId);
                     LOGGER.debug("Task {} publish is successful.", taskNotification.getTaskId());
                     Thread.sleep(5);
                 } catch (Exception e) {
@@ -191,12 +204,49 @@ public class TaskStatusPublisher implements TaskStatusListener {
         }
     }
 
-    private void publishTaskNotification(TaskNotification taskNotification) throws IOException {
-        String jsonTask = taskNotification.toJsonStringWithInputOutput();
+    private void publishTaskNotification(TaskNotification taskNotification, Object accountId)
+            throws IOException {
+        // Get the existing task JSON (with all current fields)
+        String existingTaskJson = taskNotification.toJsonStringWithInputOutput();
+
+        if (!Objects.nonNull(accountId)) {
+            LOGGER.error(
+                    "Account ID is missing in task input. Task ID: {}. Sending without Central envelope.",
+                    taskNotification.getTaskId());
+            // Send as-is without envelope (backward compatibility)
+            rcm.postNotification(
+                    RestClientManager.NotificationType.TASK,
+                    existingTaskJson,
+                    taskNotification.getTaskId(),
+                    null);
+            return;
+        }
+
+        // Parse existing JSON into JsonNode for wrapping
+        JsonNode existingPayload = objectMapper.readTree(existingTaskJson);
+
+        // Wrap in Central envelope
+        ObjectNode centralMessage = objectMapper.createObjectNode();
+        centralMessage.put("account_id", String.valueOf(accountId));
+        centralMessage.put("payload_type", TASK_PAYLOAD_TYPE);
+        centralMessage.put("payload_version", PAYLOAD_VERSION);
+        centralMessage.set("payload", existingPayload); // Keep ALL existing fields
+
+        String wrappedJson = centralMessage.toString();
+
+        LOGGER.info(
+                "Publishing Task to Central with envelope. Task ID: {}, Account ID: {}",
+                taskNotification.getTaskId(),
+                accountId);
+        LOGGER.info("Task Event Payload being published to Central: {}", wrappedJson);
+
+        // Send wrapped JSON to Central
         rcm.postNotification(
                 RestClientManager.NotificationType.TASK,
-                jsonTask,
+                wrappedJson,
                 taskNotification.getTaskId(),
                 null);
+
+        LOGGER.debug("Task {} publish to Central is successful.", taskNotification.getTaskId());
     }
 }

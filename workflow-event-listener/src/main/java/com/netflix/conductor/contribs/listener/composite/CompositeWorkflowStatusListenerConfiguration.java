@@ -157,18 +157,16 @@ public class CompositeWorkflowStatusListenerConfiguration {
                                                         + "Please configure conductor.workflow-status-listener.queue-publisher.* properties"));
 
             case "workflow_publisher":
-                return restClientManager
-                        .map(
-                                rcm -> {
-                                    LOGGER.debug(
-                                            "Creating workflow status change publisher (webhook)");
-                                    return new StatusChangePublisher(rcm, executionDAOFacade);
-                                })
-                        .orElseThrow(
-                                () ->
-                                        new IllegalStateException(
-                                                "Workflow publisher requested but notification properties not configured. "
-                                                        + "Please configure conductor.status-notifier.notification.* properties"));
+                if (!restClientManager.isPresent() || !notifierProperties.isPresent()) {
+                    throw new IllegalStateException(
+                            "Workflow publisher requested but notification properties not configured. "
+                                    + "Please configure conductor.status-notifier.notification.* properties");
+                }
+                LOGGER.debug("Creating workflow status change publisher (webhook)");
+                return new StatusChangePublisher(
+                        restClientManager.get(),
+                        executionDAOFacade,
+                        notifierProperties.get().getSubscribedWorkflowStatuses());
 
             case "archive":
                 if (!archiveProperties.isPresent()) {

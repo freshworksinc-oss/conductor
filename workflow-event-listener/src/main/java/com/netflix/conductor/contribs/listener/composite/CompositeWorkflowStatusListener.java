@@ -179,7 +179,10 @@ public class CompositeWorkflowStatusListener implements WorkflowStatusListener {
     }
 
     private void safeInvoke(
-            Runnable action, String methodName, String workflowId, WorkflowStatusListener listener) {
+            Runnable action,
+            String methodName,
+            String workflowId,
+            WorkflowStatusListener listener) {
         String listenerName = listener.getClass().getSimpleName();
         try {
             LOGGER.debug(

@@ -254,27 +254,19 @@ public class StatusChangePublisher implements WorkflowStatusListener {
                 statusChangeNotification.getWorkflowId(),
                 accountId);
         LOGGER.debug("Workflow Event Payload to be published to Central: {}", wrappedJson);
+        LOGGER.debug(
+                "Attempting HTTP POST to Central for workflow: {}",
+                statusChangeNotification.getWorkflowId());
 
         // Send wrapped JSON to Central
-        try {
-            LOGGER.debug(
-                    "Attempting HTTP POST to Central for workflow: {}",
-                    statusChangeNotification.getWorkflowId());
-            rcm.postNotification(
-                    RestClientManager.NotificationType.WORKFLOW,
-                    wrappedJson,
-                    statusChangeNotification.getWorkflowId(),
-                    statusChangeNotification.getStatusNotifier());
-            LOGGER.info(
-                    "Workflow {} publish to Central is successful.",
-                    statusChangeNotification.getWorkflowId());
-        } catch (Exception e) {
-            LOGGER.error(
-                    "HTTP POST to Central failed for workflow: {}. Exception: {} - {}",
-                    statusChangeNotification.getWorkflowId(),
-                    e.getClass().getSimpleName(),
-                    e.getMessage());
-            throw e; // Re-throw to be caught by outer catch block
-        }
+        rcm.postNotification(
+                RestClientManager.NotificationType.WORKFLOW,
+                wrappedJson,
+                statusChangeNotification.getWorkflowId(),
+                statusChangeNotification.getStatusNotifier());
+
+        LOGGER.info(
+                "Workflow {} publish to Central is successful.",
+                statusChangeNotification.getWorkflowId());
     }
 }

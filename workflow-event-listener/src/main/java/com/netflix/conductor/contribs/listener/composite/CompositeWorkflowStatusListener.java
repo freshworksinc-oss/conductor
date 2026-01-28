@@ -13,6 +13,7 @@
 package com.netflix.conductor.contribs.listener.composite;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,8 +22,9 @@ import com.netflix.conductor.core.listener.WorkflowStatusListener;
 import com.netflix.conductor.model.WorkflowModel;
 
 /**
- * Composite workflow status listener that delegates to multiple listeners. Failures in one listener
- * do not affect others.
+ * Composite workflow status listener that delegates to multiple listeners in parallel. Listeners
+ * are executed concurrently using parallel streams to avoid blocking. Failures in one listener do
+ * not affect others.
  */
 public class CompositeWorkflowStatusListener implements WorkflowStatusListener {
 
@@ -40,92 +42,83 @@ public class CompositeWorkflowStatusListener implements WorkflowStatusListener {
 
     @Override
     public void onWorkflowCompleted(WorkflowModel workflow) {
-        listeners.forEach(
-                listener ->
-                        safeInvoke(
-                                () -> listener.onWorkflowCompleted(workflow),
-                                "onWorkflowCompleted",
-                                workflow.getWorkflowId()));
+        delegateToListeners(
+                workflow,
+                "onWorkflowCompleted",
+                listener -> listener.onWorkflowCompleted(workflow));
     }
 
     @Override
     public void onWorkflowTerminated(WorkflowModel workflow) {
-        listeners.forEach(
-                listener ->
-                        safeInvoke(
-                                () -> listener.onWorkflowTerminated(workflow),
-                                "onWorkflowTerminated",
-                                workflow.getWorkflowId()));
+        delegateToListeners(
+                workflow,
+                "onWorkflowTerminated",
+                listener -> listener.onWorkflowTerminated(workflow));
     }
 
     @Override
     public void onWorkflowFinalized(WorkflowModel workflow) {
-        listeners.forEach(
-                listener ->
-                        safeInvoke(
-                                () -> listener.onWorkflowFinalized(workflow),
-                                "onWorkflowFinalized",
-                                workflow.getWorkflowId()));
+        delegateToListeners(
+                workflow,
+                "onWorkflowFinalized",
+                listener -> listener.onWorkflowFinalized(workflow));
     }
 
     @Override
     public void onWorkflowStarted(WorkflowModel workflow) {
-        listeners.forEach(
-                listener ->
-                        safeInvoke(
-                                () -> listener.onWorkflowStarted(workflow),
-                                "onWorkflowStarted",
-                                workflow.getWorkflowId()));
+        delegateToListeners(
+                workflow, "onWorkflowStarted", listener -> listener.onWorkflowStarted(workflow));
     }
 
     @Override
     public void onWorkflowRestarted(WorkflowModel workflow) {
-        listeners.forEach(
-                listener ->
-                        safeInvoke(
-                                () -> listener.onWorkflowRestarted(workflow),
-                                "onWorkflowRestarted",
-                                workflow.getWorkflowId()));
+        delegateToListeners(
+                workflow,
+                "onWorkflowRestarted",
+                listener -> listener.onWorkflowRestarted(workflow));
     }
 
     @Override
     public void onWorkflowRerun(WorkflowModel workflow) {
-        listeners.forEach(
-                listener ->
-                        safeInvoke(
-                                () -> listener.onWorkflowRerun(workflow),
-                                "onWorkflowRerun",
-                                workflow.getWorkflowId()));
+        delegateToListeners(
+                workflow, "onWorkflowRerun", listener -> listener.onWorkflowRerun(workflow));
     }
 
     @Override
     public void onWorkflowPaused(WorkflowModel workflow) {
-        listeners.forEach(
-                listener ->
-                        safeInvoke(
-                                () -> listener.onWorkflowPaused(workflow),
-                                "onWorkflowPaused",
-                                workflow.getWorkflowId()));
+        delegateToListeners(
+                workflow, "onWorkflowPaused", listener -> listener.onWorkflowPaused(workflow));
     }
 
     @Override
     public void onWorkflowResumed(WorkflowModel workflow) {
-        listeners.forEach(
-                listener ->
-                        safeInvoke(
-                                () -> listener.onWorkflowResumed(workflow),
-                                "onWorkflowResumed",
-                                workflow.getWorkflowId()));
+        delegateToListeners(
+                workflow, "onWorkflowResumed", listener -> listener.onWorkflowResumed(workflow));
     }
 
     @Override
     public void onWorkflowRetried(WorkflowModel workflow) {
-        listeners.forEach(
-                listener ->
-                        safeInvoke(
-                                () -> listener.onWorkflowRetried(workflow),
-                                "onWorkflowRetried",
-                                workflow.getWorkflowId()));
+        delegateToListeners(
+                workflow, "onWorkflowRetried", listener -> listener.onWorkflowRetried(workflow));
+    }
+
+    /**
+     * Delegates workflow event to all listeners in parallel with error isolation.
+     *
+     * @param workflow the workflow model
+     * @param methodName the name of the method being invoked (for logging)
+     * @param action the action to perform on each listener
+     */
+    private void delegateToListeners(
+            WorkflowModel workflow, String methodName, Consumer<WorkflowStatusListener> action) {
+        listeners.stream()
+                .parallel()
+                .forEach(
+                        listener ->
+                                safeInvoke(
+                                        () -> action.accept(listener),
+                                        methodName,
+                                        workflow.getWorkflowId()));
     }
 
     private void safeInvoke(Runnable action, String methodName, String workflowId) {

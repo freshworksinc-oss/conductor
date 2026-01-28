@@ -96,7 +96,12 @@ public class StatusChangePublisher implements WorkflowStatusListener {
                     } else {
                         LOGGER.error("Failed to publish workflow: Workflow is NULL");
                     }
-                    LOGGER.error("Error on publishing workflow", e);
+                    LOGGER.error(
+                            "Error on publishing workflow. Exception type: {}, Message: {}, Cause: {}",
+                            e.getClass().getName(),
+                            e.getMessage(),
+                            e.getCause() != null ? e.getCause().getMessage() : "N/A",
+                            e);
                 }
             }
         }
@@ -245,20 +250,31 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         String wrappedJson = centralMessage.toString();
 
         LOGGER.info(
-                "Publishing Workflow to Central with envelope. Workflow ID: {}, Account ID: {}",
+                "Preparing to publish Workflow to Central with envelope. Workflow ID: {}, Account ID: {}",
                 statusChangeNotification.getWorkflowId(),
                 accountId);
-        LOGGER.info("Workflow Event Payload being published to Central: {}", wrappedJson);
+        LOGGER.debug("Workflow Event Payload to be published to Central: {}", wrappedJson);
 
         // Send wrapped JSON to Central
-        rcm.postNotification(
-                RestClientManager.NotificationType.WORKFLOW,
-                wrappedJson,
-                statusChangeNotification.getWorkflowId(),
-                statusChangeNotification.getStatusNotifier());
-
-        LOGGER.debug(
-                "Workflow {} publish to Central is successful.",
-                statusChangeNotification.getWorkflowId());
+        try {
+            LOGGER.debug(
+                    "Attempting HTTP POST to Central for workflow: {}",
+                    statusChangeNotification.getWorkflowId());
+            rcm.postNotification(
+                    RestClientManager.NotificationType.WORKFLOW,
+                    wrappedJson,
+                    statusChangeNotification.getWorkflowId(),
+                    statusChangeNotification.getStatusNotifier());
+            LOGGER.info(
+                    "Workflow {} publish to Central is successful.",
+                    statusChangeNotification.getWorkflowId());
+        } catch (Exception e) {
+            LOGGER.error(
+                    "HTTP POST to Central failed for workflow: {}. Exception: {} - {}",
+                    statusChangeNotification.getWorkflowId(),
+                    e.getClass().getSimpleName(),
+                    e.getMessage());
+            throw e; // Re-throw to be caught by outer catch block
+        }
     }
 }

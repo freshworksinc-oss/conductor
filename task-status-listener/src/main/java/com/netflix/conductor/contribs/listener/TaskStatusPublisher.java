@@ -209,17 +209,13 @@ public class TaskStatusPublisher implements TaskStatusListener {
         // Get the existing task JSON (with all current fields)
         String existingTaskJson = taskNotification.toJsonStringWithInputOutput();
 
-        if (!Objects.nonNull(accountId)) {
-            LOGGER.error(
-                    "Account ID is missing in task input. Task ID: {}. Sending without Central envelope.",
-                    taskNotification.getTaskId());
-            // Send as-is without envelope (backward compatibility)
-            rcm.postNotification(
-                    RestClientManager.NotificationType.TASK,
-                    existingTaskJson,
+        if (!Objects.nonNull(accountId) || accountId.toString().trim().isEmpty()) {
+            accountId = "task_" + taskNotification.getTaskId();
+            LOGGER.warn(
+                    "Account ID is missing in task input. Task ID: {}, Workflow ID: {}. Using task ID as fallback account: {}",
                     taskNotification.getTaskId(),
-                    null);
-            return;
+                    taskNotification.getWorkflowId(),
+                    accountId);
         }
 
         // Parse existing JSON into JsonNode for wrapping

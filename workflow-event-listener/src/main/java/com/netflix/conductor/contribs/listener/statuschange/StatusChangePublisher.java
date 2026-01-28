@@ -224,17 +224,12 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         // Get the existing workflow JSON (with all current fields)
         String existingWorkflowJson = statusChangeNotification.toJsonStringWithInputOutput();
 
-        if (!Objects.nonNull(accountId)) {
-            LOGGER.error(
-                    "Account ID is missing in workflow input. Workflow ID: {}. Sending without Central envelope.",
-                    statusChangeNotification.getWorkflowId());
-            // Send as-is without envelope (backward compatibility)
-            rcm.postNotification(
-                    RestClientManager.NotificationType.WORKFLOW,
-                    existingWorkflowJson,
+        if (!Objects.nonNull(accountId) || accountId.toString().trim().isEmpty()) {
+            accountId = "workflow_" + statusChangeNotification.getWorkflowId();
+            LOGGER.warn(
+                    "Account ID is missing in workflow input. Workflow ID: {}. Using workflow ID as fallback account: {}",
                     statusChangeNotification.getWorkflowId(),
-                    statusChangeNotification.getStatusNotifier());
-            return;
+                    accountId);
         }
 
         // Parse existing JSON into JsonNode for wrapping

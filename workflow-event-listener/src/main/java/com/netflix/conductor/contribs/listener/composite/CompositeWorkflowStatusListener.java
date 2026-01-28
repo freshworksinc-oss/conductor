@@ -40,100 +40,170 @@ public class CompositeWorkflowStatusListener implements WorkflowStatusListener {
 
     @Override
     public void onWorkflowCompleted(WorkflowModel workflow) {
+        LOGGER.info(
+                "Broadcasting onWorkflowCompleted event for workflow: {} (name: {}, status: {}) to {} listeners",
+                workflow.getWorkflowId(),
+                workflow.getWorkflowName(),
+                workflow.getStatus(),
+                listeners.size());
         listeners.forEach(
                 listener ->
                         safeInvoke(
                                 () -> listener.onWorkflowCompleted(workflow),
                                 "onWorkflowCompleted",
-                                workflow.getWorkflowId()));
+                                workflow.getWorkflowId(),
+                                listener));
     }
 
     @Override
     public void onWorkflowTerminated(WorkflowModel workflow) {
+        LOGGER.info(
+                "Broadcasting onWorkflowTerminated event for workflow: {} (name: {}, status: {}) to {} listeners",
+                workflow.getWorkflowId(),
+                workflow.getWorkflowName(),
+                workflow.getStatus(),
+                listeners.size());
         listeners.forEach(
                 listener ->
                         safeInvoke(
                                 () -> listener.onWorkflowTerminated(workflow),
                                 "onWorkflowTerminated",
-                                workflow.getWorkflowId()));
+                                workflow.getWorkflowId(),
+                                listener));
     }
 
     @Override
     public void onWorkflowFinalized(WorkflowModel workflow) {
+        LOGGER.debug(
+                "Broadcasting onWorkflowFinalized event for workflow: {} to {} listeners",
+                workflow.getWorkflowId(),
+                listeners.size());
         listeners.forEach(
                 listener ->
                         safeInvoke(
                                 () -> listener.onWorkflowFinalized(workflow),
                                 "onWorkflowFinalized",
-                                workflow.getWorkflowId()));
+                                workflow.getWorkflowId(),
+                                listener));
     }
 
     @Override
     public void onWorkflowStarted(WorkflowModel workflow) {
+        LOGGER.info(
+                "Broadcasting onWorkflowStarted event for workflow: {} (name: {}) to {} listeners",
+                workflow.getWorkflowId(),
+                workflow.getWorkflowName(),
+                listeners.size());
         listeners.forEach(
                 listener ->
                         safeInvoke(
                                 () -> listener.onWorkflowStarted(workflow),
                                 "onWorkflowStarted",
-                                workflow.getWorkflowId()));
+                                workflow.getWorkflowId(),
+                                listener));
     }
 
     @Override
     public void onWorkflowRestarted(WorkflowModel workflow) {
+        LOGGER.debug(
+                "Broadcasting onWorkflowRestarted event for workflow: {} to {} listeners",
+                workflow.getWorkflowId(),
+                listeners.size());
         listeners.forEach(
                 listener ->
                         safeInvoke(
                                 () -> listener.onWorkflowRestarted(workflow),
                                 "onWorkflowRestarted",
-                                workflow.getWorkflowId()));
+                                workflow.getWorkflowId(),
+                                listener));
     }
 
     @Override
     public void onWorkflowRerun(WorkflowModel workflow) {
+        LOGGER.debug(
+                "Broadcasting onWorkflowRerun event for workflow: {} to {} listeners",
+                workflow.getWorkflowId(),
+                listeners.size());
         listeners.forEach(
                 listener ->
                         safeInvoke(
                                 () -> listener.onWorkflowRerun(workflow),
                                 "onWorkflowRerun",
-                                workflow.getWorkflowId()));
+                                workflow.getWorkflowId(),
+                                listener));
     }
 
     @Override
     public void onWorkflowPaused(WorkflowModel workflow) {
+        LOGGER.debug(
+                "Broadcasting onWorkflowPaused event for workflow: {} to {} listeners",
+                workflow.getWorkflowId(),
+                listeners.size());
         listeners.forEach(
                 listener ->
                         safeInvoke(
                                 () -> listener.onWorkflowPaused(workflow),
                                 "onWorkflowPaused",
-                                workflow.getWorkflowId()));
+                                workflow.getWorkflowId(),
+                                listener));
     }
 
     @Override
     public void onWorkflowResumed(WorkflowModel workflow) {
+        LOGGER.debug(
+                "Broadcasting onWorkflowResumed event for workflow: {} to {} listeners",
+                workflow.getWorkflowId(),
+                listeners.size());
         listeners.forEach(
                 listener ->
                         safeInvoke(
                                 () -> listener.onWorkflowResumed(workflow),
                                 "onWorkflowResumed",
-                                workflow.getWorkflowId()));
+                                workflow.getWorkflowId(),
+                                listener));
     }
 
     @Override
     public void onWorkflowRetried(WorkflowModel workflow) {
+        LOGGER.debug(
+                "Broadcasting onWorkflowRetried event for workflow: {} to {} listeners",
+                workflow.getWorkflowId(),
+                listeners.size());
         listeners.forEach(
                 listener ->
                         safeInvoke(
                                 () -> listener.onWorkflowRetried(workflow),
                                 "onWorkflowRetried",
-                                workflow.getWorkflowId()));
+                                workflow.getWorkflowId(),
+                                listener));
     }
 
-    private void safeInvoke(Runnable action, String methodName, String workflowId) {
+    private void safeInvoke(
+            Runnable action, String methodName, String workflowId, WorkflowStatusListener listener) {
+        String listenerName = listener.getClass().getSimpleName();
         try {
+            LOGGER.debug(
+                    "Invoking {} on listener: {} for workflow: {}",
+                    methodName,
+                    listenerName,
+                    workflowId);
+            long startTime = System.currentTimeMillis();
             action.run();
+            long duration = System.currentTimeMillis() - startTime;
+            LOGGER.info(
+                    "Successfully invoked {} on listener: {} for workflow: {} (took {}ms)",
+                    methodName,
+                    listenerName,
+                    workflowId,
+                    duration);
         } catch (Exception e) {
             LOGGER.error(
-                    "Error in {} for workflow {}: {}", methodName, workflowId, e.getMessage(), e);
+                    "Error in {} on listener: {} for workflow: {}: {}",
+                    methodName,
+                    listenerName,
+                    workflowId,
+                    e.getMessage(),
+                    e);
             // Don't propagate - one listener failure shouldn't affect others
         }
     }

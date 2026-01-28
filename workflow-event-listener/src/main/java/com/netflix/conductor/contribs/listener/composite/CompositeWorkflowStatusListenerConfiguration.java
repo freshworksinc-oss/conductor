@@ -81,6 +81,7 @@ public class CompositeWorkflowStatusListenerConfiguration {
                 properties.getTypes());
 
         for (String type : properties.getTypes()) {
+            LOGGER.info("Attempting to create workflow listener of type: {}", type);
             WorkflowStatusListener listener =
                     createListener(
                             type.trim(),
@@ -94,7 +95,12 @@ public class CompositeWorkflowStatusListenerConfiguration {
                             archiveProperties);
             if (listener != null) {
                 listeners.add(listener);
-                LOGGER.info("Successfully added workflow listener: {}", type);
+                LOGGER.info(
+                        "Successfully added workflow listener: {} (class: {})",
+                        type,
+                        listener.getClass().getSimpleName());
+            } else {
+                LOGGER.warn("Failed to create listener for type: {}", type);
             }
         }
 
@@ -105,6 +111,10 @@ public class CompositeWorkflowStatusListenerConfiguration {
                             + "Valid values: workflow_publisher, queue_publisher, kafka, archive");
         }
 
+        LOGGER.info(
+                "Composite workflow status listener initialized with {} listeners: {}",
+                listeners.size(),
+                listeners.stream().map(l -> l.getClass().getSimpleName()).toList());
         return new CompositeWorkflowStatusListener(listeners);
     }
 

@@ -197,6 +197,7 @@ export default function WorkflowPanel() {
               defaultValue={freeText}
               onBlur={setFreeText}
               clearable
+              disabled
             />
           </Grid>
           <Grid item xs={1}>

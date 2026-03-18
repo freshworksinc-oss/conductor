@@ -14,6 +14,13 @@ module.exports = function (app) {
     })
   );
   app.use(
+    "/health",
+    createProxyMiddleware({
+      target: target,
+      changeOrigin: true,
+    })
+  );
+  app.use(
     "/usermanagement",
     createProxyMiddleware({
       target: usermanagementTarget,

@@ -33,7 +33,7 @@ const useStyles = makeStyles((theme) => ({
 
 function fetchUserInfo() {
   const basename = getBasename();
-  return fetch(`${basename}userinfo`).then((response) => {
+  return fetch(`${basename}api/userinfo`).then((response) => {
     if (!response.ok) {
       throw new Error(`userinfo returned ${response.status}`);
     }

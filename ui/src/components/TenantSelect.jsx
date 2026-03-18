@@ -31,26 +31,11 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-function fetchUserEmail() {
+function fetchUserInfo() {
   const basename = getBasename();
-  return fetch(`${basename}health`).then((response) => {
-    const userEmail = response.headers.get("x-user-email");
-    if (!userEmail) {
-      throw new Error("x-user-email header not found in health response");
-    }
-    return userEmail;
-  });
-}
-
-function fetchTenants(email) {
-  const basename = getBasename();
-  return fetch(
-    `${basename}usermanagement/v2/auth/${encodeURIComponent(
-      email
-    )}/conductor?details=true`
-  ).then((response) => {
+  return fetch(`${basename}userinfo`).then((response) => {
     if (!response.ok) {
-      throw new Error(`Usermanagement API returned ${response.status}`);
+      throw new Error(`userinfo returned ${response.status}`);
     }
     return response.json();
   });
@@ -64,22 +49,25 @@ export default function TenantSelect() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchUserEmail()
-      .then((email) => fetchTenants(email))
+    console.log("[TenantSelect] Component mounted, fetching userinfo...");
+    fetchUserInfo()
       .then((data) => {
-        // Response: { message: { "default": "SuperAdmin", "sip": "Editor" } }
-        const tenantsMap = data.message || {};
+        console.log("[TenantSelect] userinfo response:", JSON.stringify(data));
+        // Response: { email: "...", tenants: { "default": "SuperAdmin", "sip": "Editor" } }
+        const tenantsMap = data.tenants || {};
         const tenantList = Object.entries(tenantsMap).map(([id, role]) => ({
           id,
           role,
         }));
+        console.log("[TenantSelect] Parsed tenant list:", JSON.stringify(tenantList));
         setTenants(tenantList);
         if (tenantList.length > 0) {
           setSelectedTenant(tenantList[0].id);
+          console.log("[TenantSelect] Default tenant set to:", tenantList[0].id);
         }
       })
       .catch((err) => {
-        console.error("Failed to load tenants:", err);
+        console.error("[TenantSelect] Failed to load tenants:", err.message);
         setError(err.message);
       })
       .finally(() => setLoading(false));

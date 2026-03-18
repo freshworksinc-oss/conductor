@@ -162,7 +162,7 @@ const ErrorsInspector = () => {
           return response.json();
         })
         .then(data => {
-          console.log("Fallback workflow definitions:", data);
+          // console.log("Fallback workflow definitions:", data);
           if (Array.isArray(data)) {
             setFallbackDefs(data);
           }

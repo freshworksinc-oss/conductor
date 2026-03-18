@@ -6,7 +6,7 @@ const usermanagementTarget =
 
 module.exports = function (app) {
   // Server-side endpoint: returns user email and tenants in one call
-  app.get("/userinfo", async (req, res) => {
+  app.use("/userinfo", async (req, res) => {
     console.log("[userinfo] Request received");
     const userEmail = req.headers["x-user-email"];
     console.log("[userinfo] x-user-email header:", userEmail || "NOT FOUND");

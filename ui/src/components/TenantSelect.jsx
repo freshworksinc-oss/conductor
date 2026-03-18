@@ -9,6 +9,17 @@ import {
 import { getBasename } from "../utils/helpers";
 
 const useStyles = makeStyles((theme) => ({
+  wrapper: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  label: {
+    fontSize: 13,
+    fontWeight: 500,
+    color: theme.palette.text.secondary,
+    whiteSpace: "nowrap",
+  },
   formControl: {
     minWidth: 160,
   },
@@ -30,6 +41,15 @@ const useStyles = makeStyles((theme) => ({
     padding: "6px 12px",
   },
 }));
+
+function setTenantCookie(tenantId) {
+  document.cookie = `x-tenant-id=${encodeURIComponent(tenantId)}; path=/; SameSite=Strict`;
+}
+
+function getTenantCookie() {
+  const match = document.cookie.match(/(?:^|;\s*)x-tenant-id=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 function fetchUserInfo() {
   const basename = getBasename();
@@ -62,19 +82,28 @@ export default function TenantSelect() {
         console.log("[TenantSelect] Parsed tenant list:", JSON.stringify(tenantList));
         setTenants(tenantList);
         if (tenantList.length > 0) {
-          setSelectedTenant(tenantList[0].id);
-          console.log("[TenantSelect] Default tenant set to:", tenantList[0].id);
+          const savedTenant = getTenantCookie();
+          const initial =
+            tenantList.find((t) => t.id === savedTenant)
+              ? savedTenant
+              : tenantList[0].id;
+          setSelectedTenant(initial);
+          setTenantCookie(initial);
+          console.log("[TenantSelect] Tenant set to:", initial);
         }
       })
       .catch((err) => {
-        console.error("[TenantSelect] Failed to load tenants:", err.message);
-        setError(err.message);
+        console.warn("[TenantSelect] Failed to load tenants, using defaults:", err.message);
       })
       .finally(() => setLoading(false));
   }, []);
 
   const handleChange = (event) => {
-    setSelectedTenant(event.target.value);
+    const tenantId = event.target.value;
+    setSelectedTenant(tenantId);
+    setTenantCookie(tenantId);
+    console.log("[TenantSelect] Tenant changed to:", tenantId);
+    window.location.reload();
   };
 
   if (loading) {
@@ -90,18 +119,21 @@ export default function TenantSelect() {
   }
 
   return (
-    <FormControl variant="outlined" className={classes.formControl}>
-      <Select
-        value={selectedTenant}
-        onChange={handleChange}
-        classes={{ select: classes.select }}
-      >
-        {tenants.map((tenant) => (
-          <MenuItem key={tenant.id} value={tenant.id}>
-            {tenant.id}
-          </MenuItem>
-        ))}
-      </Select>
-    </FormControl>
+    <div className={classes.wrapper}>
+      <span className={classes.label}>Tenant</span>
+      <FormControl variant="outlined" className={classes.formControl}>
+        <Select
+          value={selectedTenant}
+          onChange={handleChange}
+          classes={{ select: classes.select }}
+        >
+          {tenants.map((tenant) => (
+            <MenuItem key={tenant.id} value={tenant.id}>
+              {tenant.id}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    </div>
   );
 }

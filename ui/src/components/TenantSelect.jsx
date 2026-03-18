@@ -33,7 +33,7 @@ const useStyles = makeStyles((theme) => ({
 
 function fetchUserEmail() {
   const basename = getBasename();
-  return fetch(`${basename}api/health`).then((response) => {
+  return fetch(`${basename}health`).then((response) => {
     const userEmail = response.headers.get("x-user-email");
     if (!userEmail) {
       throw new Error("x-user-email header not found in health response");

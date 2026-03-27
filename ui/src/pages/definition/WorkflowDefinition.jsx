@@ -29,6 +29,8 @@ import {
 } from "@material-ui/icons";
 import { useFetchForWorkflowDefinition } from "../../utils/helperFunctions";
 import PanAndZoomWrapper from "../../components/diagram/PanAndZoomWrapper";
+import RoleGate from "../../components/RoleGate";
+import { useTenant } from "../../components/TenantContext";
 
 const minCodePanelWidth = 500;
 const useStyles = makeStyles({
@@ -113,6 +115,7 @@ export default function Workflow() {
   const [jsonErrors, setJsonErrors] = useState([]);
   const [decorations, setDecorations] = useState([]);
 
+  const { canAccess } = useTenant();
   const workflowName = _.get(match, "params.name");
   const workflowVersion = _.get(match, "params.version"); // undefined for latest
 
@@ -336,19 +339,21 @@ export default function Workflow() {
             )}
 
             <div className={classes.rightButtons}>
-              <Button
-                disabled={!_.isEmpty(jsonErrors) || !isModified}
-                onClick={handleOpenSave}
-              >
-                Save
-              </Button>
-              <Button
-                disabled={!isModified}
-                onClick={() => handleResetVersion(workflowVersion)}
-                variant="secondary"
-              >
-                Reset
-              </Button>
+              <RoleGate minRole="Editor">
+                <Button
+                  disabled={!_.isEmpty(jsonErrors) || !isModified}
+                  onClick={handleOpenSave}
+                >
+                  Save
+                </Button>
+                <Button
+                  disabled={!isModified}
+                  onClick={() => handleResetVersion(workflowVersion)}
+                  variant="secondary"
+                >
+                  Reset
+                </Button>
+              </RoleGate>
 
               <IconButton
                 onClick={() => dispatch({ type: actions.TOGGLE_GRAPH_PANEL })}
@@ -376,6 +381,7 @@ export default function Workflow() {
             options={{
               smoothScrolling: true,
               selectOnLineNumbers: true,
+              readOnly: !canAccess("Editor"),
               minimap: {
                 enabled: false,
               },

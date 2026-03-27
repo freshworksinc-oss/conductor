@@ -5,6 +5,7 @@ import Header from "./Header";
 import sharedStyles from "../styles";
 import { Helmet } from "react-helmet";
 import AddIcon from "@material-ui/icons/Add";
+import RoleGate from "../../components/RoleGate";
 import { useTaskDefs } from "../../data/task";
 
 const useStyles = makeStyles(sharedStyles);
@@ -59,9 +60,11 @@ export default function TaskDefinitions() {
 
       <div className={classes.tabContent}>
         <div className={classes.buttonRow}>
-          <Button component={NavLink} path="/taskDef" startIcon={<AddIcon />}>
-            New Task Definition
-          </Button>
+          <RoleGate minRole="Editor">
+            <Button component={NavLink} path="/taskDef" startIcon={<AddIcon />}>
+              New Task Definition
+            </Button>
+          </RoleGate>
         </div>
 
         {tasks && (

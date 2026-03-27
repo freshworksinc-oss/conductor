@@ -1,6 +1,7 @@
 import { makeStyles } from "@material-ui/styles";
 import { isFailedTask } from "../../utils/helpers";
 import { DropdownButton } from "../../components";
+import RoleGate from "../../components/RoleGate";
 import { ListItemIcon, ListItemText } from "@material-ui/core";
 import StopIcon from "@material-ui/icons/Stop";
 import PauseIcon from "@material-ui/icons/Pause";
@@ -178,5 +179,9 @@ export default function ActionModule({ execution, triggerReload }) {
     });
   }
 
-  return <DropdownButton options={options}>Actions</DropdownButton>;
+  return (
+    <RoleGate minRole="Editor">
+      <DropdownButton options={options}>Actions</DropdownButton>
+    </RoleGate>
+  );
 }

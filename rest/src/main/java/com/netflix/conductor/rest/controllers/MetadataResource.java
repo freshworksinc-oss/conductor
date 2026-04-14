@@ -103,6 +103,14 @@ public class MetadataResource {
         return new SearchResult<>(allWorkflows.size(), allWorkflows);
     }
 
+    @Operation(
+            summary =
+                    "Returns only distinct workflow definition names (no versions or definition bodies)")
+    @GetMapping("/workflow/names")
+    public List<String> getWorkflowNames() {
+        return metadataService.getWorkflowNames();
+    }    
+
     @DeleteMapping("/workflow/{name}/{version}")
     @Operation(
             summary =

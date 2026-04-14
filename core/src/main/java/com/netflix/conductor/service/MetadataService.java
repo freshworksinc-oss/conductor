@@ -159,6 +159,11 @@ public interface MetadataService {
 
 
     /**
+     * @return Returns distinct workflow definition names (no versions, no definition bodies)
+     */
+    List<String> getWorkflowNames();    
+
+    /**
      * Search for the latest versions of workflow definitions with pagination support.
      *
      * @param start Starting index for pagination (0-based)

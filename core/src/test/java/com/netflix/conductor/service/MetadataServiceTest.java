@@ -532,6 +532,15 @@ public class MetadataServiceTest {
     }
 
     @Test
+    public void testWorkflowNames() {
+        List<String> names = metadataService.getWorkflowNames();
+        assertNotNull(names);
+        assertEquals(2, names.size());
+        assertEquals("alpha_workflow", names.get(0));
+        assertEquals("beta_workflow", names.get(1));
+    }
+    
+    @Test
     public void testWorkflowNamesAndVersions() {
         Map<String, ? extends Iterable<WorkflowDefSummary>> namesAndVersions =
                 metadataService.getWorkflowNamesAndVersions();

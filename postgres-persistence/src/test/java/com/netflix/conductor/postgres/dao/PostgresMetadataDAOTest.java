@@ -321,6 +321,7 @@ public class PostgresMetadataDAOTest {
 
         assertNotNull(allMap);
         assertEquals(baselineSize + 3, allMap.size());
+        assertTrue(allMap.size() >= 3);
         assertEquals(1, allMap.get("latest_ver_test1").getVersion());
         assertEquals(2, allMap.get("latest_ver_test2").getVersion());
         assertEquals(3, allMap.get("latest_ver_test3").getVersion());
@@ -436,6 +437,29 @@ public class PostgresMetadataDAOTest {
         sortedNames.sort(String::compareTo);
         assertEquals(sortedNames, names);
     }
+
+    @Test
+    public void testGetWorkflowNames() {
+        WorkflowDef def = new WorkflowDef();
+        def.setName("names_wf_alpha");
+        def.setVersion(1);
+        metadataDAO.createWorkflowDef(def);
+
+        def.setVersion(2);
+        metadataDAO.createWorkflowDef(def);
+
+        def.setName("names_wf_beta");
+        def.setVersion(1);
+        metadataDAO.createWorkflowDef(def);
+
+        List<String> names = metadataDAO.getWorkflowNames();
+        assertNotNull(names);
+
+        // Verify distinct names and ordering
+        assertTrue(names.contains("names_wf_alpha"));
+        assertTrue(names.contains("names_wf_beta"));
+        assertTrue(names.indexOf("names_wf_alpha") < names.indexOf("names_wf_beta"));
+    }    
 
     private WorkflowDef createWorkflowDef(String name, int version) {
         WorkflowDef def = new WorkflowDef();

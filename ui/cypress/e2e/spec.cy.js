@@ -5,6 +5,9 @@ describe("Landing Page", () => {
     cy.intercept("/api/metadata/workflow", {
       fixture: "metadataWorkflow.json",
     });
+    cy.intercept("/api/metadata/workflow/names", {
+      fixture: "metadataWorkflowNames.json",
+    });    
     cy.intercept("/api/metadata/taskdefs", { fixture: "metadataTasks.json" });
   });
 

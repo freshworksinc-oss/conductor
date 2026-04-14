@@ -24,6 +24,9 @@ import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.service.MetadataService;
 
 import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyList;
 import static org.mockito.Mockito.anyString;
@@ -153,6 +156,14 @@ public class MetadataResourceTest {
         assertEquals(1, result.getResults().size());
         verify(mockMetadataService, times(1)).searchWorkflowDefsLatestVersions(20, 100);
     }
+
+    @Test
+    public void testGetWorkflowNames() {
+        List<String> names = Arrays.asList("workflow_a", "workflow_b");
+        when(mockMetadataService.getWorkflowNames()).thenReturn(names);
+        assertEquals(names, metadataResource.getWorkflowNames());
+        verify(mockMetadataService, times(1)).getWorkflowNames();
+    }    
 
     @Test
     public void testGetAllWorkflowDefLatestVersionsWithOnlySizeParam() {

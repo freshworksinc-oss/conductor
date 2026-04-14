@@ -14,6 +14,7 @@ package com.netflix.conductor.dao;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
@@ -86,4 +87,18 @@ public interface MetadataDAO {
      * @return List the latest versions of the workflow definitions
      */
     List<WorkflowDef> getAllWorkflowDefsLatestVersions();
+
+   /**
+     * Returns distinct workflow definition names without loading full definition bodies.
+     * Persistence modules should override this with an optimized query (e.g. SELECT DISTINCT name).
+     *
+     * @return sorted list of unique workflow names
+     */
+    default List<String> getWorkflowNames() {
+        return getAllWorkflowDefs().stream()
+                .map(WorkflowDef::getName)
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+    }
 }

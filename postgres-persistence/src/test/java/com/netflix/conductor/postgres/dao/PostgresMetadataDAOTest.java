@@ -39,6 +39,7 @@ import com.netflix.conductor.common.config.TestObjectMapperConfiguration;
 import com.netflix.conductor.common.metadata.events.EventHandler;
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
+import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.core.exception.NonTransientException;
 import com.netflix.conductor.postgres.config.PostgresConfiguration;
@@ -435,6 +436,37 @@ public class PostgresMetadataDAOTest {
         List<String> sortedNames = new ArrayList<>(names);
         sortedNames.sort(String::compareTo);
         assertEquals(sortedNames, names);
+    }
+
+    @Test
+    public void testGetWorkflowNamesAndVersionsLightweight() {
+        WorkflowDef def = new WorkflowDef();
+        def.setName("wf_alpha");
+        def.setVersion(1);
+        def.setCreateTime(System.currentTimeMillis());
+        def.setUpdateTime(System.currentTimeMillis());
+        metadataDAO.createWorkflowDef(def);
+
+        def.setVersion(2);
+        metadataDAO.createWorkflowDef(def);
+
+        def.setName("wf_beta");
+        def.setVersion(1);
+        metadataDAO.createWorkflowDef(def);
+
+        List<WorkflowDefSummary> summaries = metadataDAO.getWorkflowNamesAndVersions();
+        assertNotNull(summaries);
+        assertEquals(3, summaries.size());
+
+        Map<String, List<WorkflowDefSummary>> byName =
+                summaries.stream().collect(Collectors.groupingBy(WorkflowDefSummary::getName));
+        assertEquals(2, byName.get("wf_alpha").size());
+        assertEquals(1, byName.get("wf_beta").size());
+
+        for (WorkflowDefSummary s : summaries) {
+            assertNotNull(s.getName());
+            assertTrue(s.getVersion() > 0);
+        }
     }
 
     private WorkflowDef createWorkflowDef(String name, int version) {

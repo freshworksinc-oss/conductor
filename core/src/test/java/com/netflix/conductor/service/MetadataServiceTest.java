@@ -80,6 +80,7 @@ public class MetadataServiceTest {
             Map<String, TaskDef> taskDefinitions = new HashMap<>();
 
             when(metadataDAO.getAllWorkflowDefs()).thenReturn(mockWorkflowDefs());
+            when(metadataDAO.getWorkflowNamesAndVersions()).thenReturn(mockWorkflowDefSummaries());
 
             Answer<TaskDef> upsertTaskDef =
                     (invocation) -> {
@@ -95,6 +96,18 @@ public class MetadataServiceTest {
                                     taskDefinitions.get(invocation.getArgument(0, String.class)));
 
             return new MetadataServiceImpl(metadataDAO, eventHandlerDAO, properties);
+        }
+
+        private List<WorkflowDefSummary> mockWorkflowDefSummaries() {
+            List<WorkflowDefSummary> retval = new ArrayList<>();
+            for (int i = 5; i > 0; i--) {
+                WorkflowDefSummary summary = new WorkflowDefSummary();
+                summary.setCreateTime(new Date().getTime());
+                summary.setVersion(i);
+                summary.setName("test_workflow_def");
+                retval.add(summary);
+            }
+            return retval;
         }
 
         private List<WorkflowDef> mockWorkflowDefs() {

@@ -12,11 +12,13 @@
  */
 package com.netflix.conductor.dao;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
+import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 
 /** Data access layer for the workflow metadata - task definitions and workflow definitions */
 public interface MetadataDAO {
@@ -86,4 +88,24 @@ public interface MetadataDAO {
      * @return List the latest versions of the workflow definitions
      */
     List<WorkflowDef> getAllWorkflowDefsLatestVersions();
+
+    /**
+     * Returns lightweight summaries (name, version, timestamps) for all workflow definitions,
+     * without loading the full definition bodies. Persistence modules can override this with an
+     * optimized query that skips reading json_data.
+     *
+     * @return List of workflow definition summaries
+     */
+    default List<WorkflowDefSummary> getWorkflowNamesAndVersions() {
+        List<WorkflowDefSummary> summaries = new ArrayList<>();
+        for (WorkflowDef def : getAllWorkflowDefs()) {
+            WorkflowDefSummary summary = new WorkflowDefSummary();
+            summary.setName(def.getName());
+            summary.setVersion(def.getVersion());
+            summary.setCreateTime(def.getCreateTime());
+            summary.setUpdateTime(def.getUpdateTime());
+            summaries.add(summary);
+        }
+        return summaries;
+    }
 }

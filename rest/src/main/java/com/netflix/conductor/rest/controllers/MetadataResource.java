@@ -15,6 +15,8 @@ package com.netflix.conductor.rest.controllers;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,6 +42,7 @@ import static com.netflix.conductor.rest.config.RequestMappingConstants.METADATA
 @RequestMapping(value = METADATA)
 public class MetadataResource {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(MetadataResource.class);
     private final MetadataService metadataService;
 
     public MetadataResource(MetadataService metadataService) {
@@ -108,6 +111,7 @@ public class MetadataResource {
                     "Returns only distinct workflow definition names (no versions or definition bodies)")
     @GetMapping("/workflow/names")
     public List<String> getWorkflowNames() {
+        LOGGER.info("GET /api/metadata/workflow/names endpoint called");
         return metadataService.getWorkflowNames();
     }    
 

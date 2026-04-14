@@ -80,6 +80,8 @@ public class MetadataServiceTest {
             Map<String, TaskDef> taskDefinitions = new HashMap<>();
 
             when(metadataDAO.getAllWorkflowDefs()).thenReturn(mockWorkflowDefs());
+            when(metadataDAO.getWorkflowNames())
+                    .thenReturn(Arrays.asList("alpha_workflow", "beta_workflow"));
 
             Answer<TaskDef> upsertTaskDef =
                     (invocation) -> {

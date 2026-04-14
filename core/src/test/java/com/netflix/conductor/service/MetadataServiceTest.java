@@ -99,8 +99,9 @@ public class MetadataServiceTest {
         }
 
         private List<WorkflowDefSummary> mockWorkflowDefSummaries() {
+            // Sorted ascending by version, matching the DAO contract (ORDER BY name, version)
             List<WorkflowDefSummary> retval = new ArrayList<>();
-            for (int i = 5; i > 0; i--) {
+            for (int i = 1; i <= 5; i++) {
                 WorkflowDefSummary summary = new WorkflowDefSummary();
                 summary.setCreateTime(new Date().getTime());
                 summary.setVersion(i);

@@ -12,7 +12,9 @@
  */
 package com.netflix.conductor.service;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -246,9 +248,11 @@ public class MetadataServiceImpl implements MetadataService {
     public Map<String, ? extends Iterable<WorkflowDefSummary>> getWorkflowNamesAndVersions() {
         List<WorkflowDefSummary> summaries = metadataDAO.getWorkflowNamesAndVersions();
 
-        Map<String, TreeSet<WorkflowDefSummary>> retval = new HashMap<>();
+        // DAO returns rows pre-sorted by (name, version), so LinkedHashMap + ArrayList
+        // preserves that order without the overhead of TreeSet rebalancing.
+        Map<String, List<WorkflowDefSummary>> retval = new LinkedHashMap<>();
         for (WorkflowDefSummary summary : summaries) {
-            retval.computeIfAbsent(summary.getName(), k -> new TreeSet<>()).add(summary);
+            retval.computeIfAbsent(summary.getName(), k -> new ArrayList<>()).add(summary);
         }
         return retval;
     }

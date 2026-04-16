@@ -31,6 +31,7 @@ import com.netflix.conductor.common.metadata.workflow.WorkflowClassifier;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.common.model.BulkResponse;
+import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.core.exception.ConflictException;
 import com.netflix.conductor.service.MetadataService;
 
@@ -129,10 +130,23 @@ public class MetadataResource {
         return metadataService.getWorkflowVersions(name);
     }
 
-    @Operation(summary = "Returns only the latest version of all workflow definitions")
+    @Operation(
+            summary = "Returns only the latest version of all workflow definitions",
+            description =
+                    "Supports optional pagination via start and size parameters. "
+                            + "When pagination parameters are provided, returns SearchResult with totalHits and paginated results. "
+                            + "When no parameters are provided, returns all latest versions wrapped in SearchResult for consistency.")
     @GetMapping("/workflow/latest-versions")
-    public List<WorkflowDef> getAllWorkflowsWithLatestVersions() {
-        return metadataService.getWorkflowDefsLatestVersions();
+    public SearchResult<WorkflowDef> getAllWorkflowsWithLatestVersions(
+            @RequestParam(value = "start", required = false) Integer start,
+            @RequestParam(value = "size", required = false) Integer size) {
+        if (start != null || size != null) {
+            return metadataService.searchWorkflowDefsLatestVersions(
+                    start != null ? start : 0, size != null ? size : 100);
+        }
+
+        List<WorkflowDef> allWorkflows = metadataService.getWorkflowDefsLatestVersions();
+        return new SearchResult<>(allWorkflows.size(), allWorkflows);
     }
 
     @DeleteMapping("/workflow/{name}/{version}")

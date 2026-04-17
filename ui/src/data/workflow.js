@@ -121,48 +121,43 @@ export function useSaveWorkflow(callbacks) {
 }
 
 export function useWorkflowNames() {
-  const { data } = useWorkflowDefs();
-  // Extract unique names
-  return useMemo(() => {
-    if (data) {
-      const nameSet = new Set(data.map((def) => def.name));
-      return Array.from(nameSet);
-    } else {
-      return [];
-    }
-  }, [data]);
+  const { data } = useFetch(["workflowNames"], "/metadata/workflow/names", {
+    staleTime: STALE_TIME_WORKFLOW_DEFS,
+  });
+  return useMemo(() => (data ? data : []), [data]);
 }
 
 // Version numbers do not necessarily start, or run contiguously from 1. Could be arbitrary integers e.g. 52335678.
 // By convention they should be monotonic (ever increasing) wrt time.
 export function useWorkflowNamesAndVersions() {
-  const { data, ...rest } = useWorkflowDefs();
+  const { data, ...rest } = useFetch(
+    ["workflowNamesAndVersions"],
+    "/metadata/workflow/names-and-versions",
+    { staleTime: STALE_TIME_WORKFLOW_DEFS }
+  );
 
   const newData = useMemo(() => {
     const retval = new Map();
     if (data) {
-      for (let def of data) {
-        let arr;
-        if (!retval.has(def.name)) {
-          arr = [];
-          retval.set(def.name, arr);
-        } else {
-          arr = retval.get(def.name);
-        }
-        arr.push({
-          version: def.version,
-          createTime: def.createTime,
-          updateTime: def.updateTime,
-        });
+      for (let [name, versions] of Object.entries(data)) {
+        retval.set(name, versions);
       }
-
-      // Sort arrays in place
-      retval.forEach((val) => val.sort());
     }
     return retval;
   }, [data]);
 
   return { ...rest, data: newData };
+}
+
+export function useWorkflowVersions(workflowName, reactQueryOptions = {}) {
+  const path = workflowName ? `/metadata/workflow/${workflowName}/versions` : null;
+  const key = ["workflowVersions", workflowName];
+  
+  return useFetch(key, path, {
+    ...reactQueryOptions,
+    enabled: !!workflowName && (reactQueryOptions.enabled !== false),
+    staleTime: STALE_TIME_WORKFLOW_DEFS,
+  });
 }
 
 export function useStartWorkflow(callbacks) {

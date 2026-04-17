@@ -13,6 +13,7 @@
 package com.netflix.conductor.rest.controllers;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import org.junit.Before;
@@ -20,13 +21,14 @@ import org.junit.Test;
 
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
+import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.service.MetadataService;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyList;
-import static org.mockito.Mockito.anyString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -155,6 +157,14 @@ public class MetadataResourceTest {
     }
 
     @Test
+    public void testGetWorkflowNames() {
+        List<String> names = Arrays.asList("workflow_a", "workflow_b");
+        when(mockMetadataService.getWorkflowNames()).thenReturn(names);
+        assertEquals(names, metadataResource.getWorkflowNames());
+        verify(mockMetadataService, times(1)).getWorkflowNames();
+    }
+
+    @Test
     public void testGetAllWorkflowDefLatestVersionsWithOnlySizeParam() {
         WorkflowDef workflowDef = new WorkflowDef();
         workflowDef.setName("test");
@@ -228,5 +238,25 @@ public class MetadataResourceTest {
     public void testUnregisterTaskDef() {
         metadataResource.unregisterTaskDef("test");
         verify(mockMetadataService, times(1)).unregisterTaskDef(anyString());
+    }
+
+    @Test
+    public void testGetWorkflowVersions() {
+        List<WorkflowDefSummary> versions = new ArrayList<>();
+        WorkflowDefSummary v1 = new WorkflowDefSummary();
+        v1.setName("test");
+        v1.setVersion(1);
+        v1.setCreateTime(System.currentTimeMillis());
+        versions.add(v1);
+
+        WorkflowDefSummary v2 = new WorkflowDefSummary();
+        v2.setName("test");
+        v2.setVersion(2);
+        v2.setCreateTime(System.currentTimeMillis());
+        versions.add(v2);
+
+        when(mockMetadataService.getWorkflowVersions("test")).thenReturn(versions);
+        assertEquals(versions, metadataResource.getWorkflowVersions("test"));
+        verify(mockMetadataService, times(1)).getWorkflowVersions("test");
     }
 }

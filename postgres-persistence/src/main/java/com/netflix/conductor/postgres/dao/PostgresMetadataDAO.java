@@ -208,6 +208,43 @@ public class PostgresMetadataDAO extends PostgresBaseDAO
     }
 
     @Override
+    public List<String> getWorkflowNames() {
+        final String QUERY = "SELECT DISTINCT name FROM meta_workflow_def ORDER BY name";
+        return queryWithTransaction(QUERY, q -> q.executeAndFetch(String.class));
+    }
+
+    @Override
+    public List<com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary>
+            getWorkflowVersions(String name) {
+        final String QUERY =
+                "SELECT version, created_on FROM meta_workflow_def WHERE name = ? ORDER BY version";
+        return queryWithTransaction(
+                QUERY,
+                q -> {
+                    q.addParameter(name);
+                    return q.executeAndFetch(
+                            rs -> {
+                                List<
+                                                com.netflix.conductor.common.metadata.workflow
+                                                        .WorkflowDefSummary>
+                                        summaries = new ArrayList<>();
+                                while (rs.next()) {
+                                    com.netflix.conductor.common.metadata.workflow
+                                                    .WorkflowDefSummary
+                                            summary =
+                                                    new com.netflix.conductor.common.metadata
+                                                            .workflow.WorkflowDefSummary();
+                                    summary.setName(name);
+                                    summary.setVersion(rs.getInt("version"));
+                                    summary.setCreateTime(rs.getTimestamp("created_on").getTime());
+                                    summaries.add(summary);
+                                }
+                                return summaries;
+                            });
+                });
+    }
+
+    @Override
     public List<WorkflowDef> getAllWorkflowDefs() {
         final String GET_ALL_WORKFLOW_DEF_QUERY =
                 "SELECT json_data FROM meta_workflow_def ORDER BY name, version";

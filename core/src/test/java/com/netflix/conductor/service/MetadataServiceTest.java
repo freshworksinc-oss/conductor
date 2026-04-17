@@ -81,6 +81,38 @@ public class MetadataServiceTest {
 
             when(metadataDAO.getAllWorkflowDefs()).thenReturn(mockWorkflowDefs());
 
+            // Mock getWorkflowNames
+            when(metadataDAO.getWorkflowNames())
+                    .thenAnswer(
+                            invocation ->
+                                    mockWorkflowDefs().stream()
+                                            .map(WorkflowDef::getName)
+                                            .distinct()
+                                            .sorted()
+                                            .collect(java.util.stream.Collectors.toList()));
+
+            // Mock getWorkflowVersions
+            when(metadataDAO.getWorkflowVersions(any(String.class)))
+                    .thenAnswer(
+                            invocation -> {
+                                String name = invocation.getArgument(0, String.class);
+                                return mockWorkflowDefs().stream()
+                                        .filter(def -> def.getName().equals(name))
+                                        .map(
+                                                def -> {
+                                                    WorkflowDefSummary summary =
+                                                            new WorkflowDefSummary();
+                                                    summary.setName(def.getName());
+                                                    summary.setVersion(def.getVersion());
+                                                    summary.setCreateTime(def.getCreateTime());
+                                                    return summary;
+                                                })
+                                        .sorted(
+                                                java.util.Comparator.comparingInt(
+                                                        WorkflowDefSummary::getVersion))
+                                        .collect(java.util.stream.Collectors.toList());
+                            });
+
             Answer<TaskDef> upsertTaskDef =
                     (invocation) -> {
                         TaskDef argument = invocation.getArgument(0, TaskDef.class);
@@ -532,6 +564,14 @@ public class MetadataServiceTest {
     }
 
     @Test
+    public void testWorkflowNames() {
+        List<String> names = metadataService.getWorkflowNames();
+        assertNotNull(names);
+        assertEquals(1, names.size());
+        assertEquals("test_workflow_def", names.get(0));
+    }
+
+    @Test
     public void testWorkflowNamesAndVersions() {
         Map<String, ? extends Iterable<WorkflowDefSummary>> namesAndVersions =
                 metadataService.getWorkflowNamesAndVersions();
@@ -544,6 +584,19 @@ public class MetadataServiceTest {
             assertEquals(i, ver.getVersion());
             assertNotNull(ver.getCreateTime());
             assertEquals("test_workflow_def", ver.getName());
+        }
+    }
+
+    @Test
+    public void testGetWorkflowVersions() {
+        List<WorkflowDefSummary> versions =
+                metadataService.getWorkflowVersions("test_workflow_def");
+        assertNotNull(versions);
+        assertEquals(5, versions.size());
+        for (int i = 0; i < 5; i++) {
+            assertEquals(i + 1, versions.get(i).getVersion());
+            assertEquals("test_workflow_def", versions.get(i).getName());
+            assertNotNull(versions.get(i).getCreateTime());
         }
     }
 

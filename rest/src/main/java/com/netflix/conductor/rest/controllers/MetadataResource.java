@@ -15,6 +15,8 @@ package com.netflix.conductor.rest.controllers;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,6 +41,8 @@ import static com.netflix.conductor.rest.config.RequestMappingConstants.METADATA
 @RestController
 @RequestMapping(value = METADATA)
 public class MetadataResource {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(MetadataResource.class);
 
     private final MetadataService metadataService;
 
@@ -87,13 +91,20 @@ public class MetadataResource {
     @Operation(summary = "Returns only distinct workflow names (no versions, no definition bodies)")
     @GetMapping("/workflow/names")
     public List<String> getWorkflowNames() {
-        return metadataService.getWorkflowNames();
+        List<String> names = metadataService.getWorkflowNames();
+        LOGGER.info("GET /workflow/names — returning {} distinct workflow names", names.size());
+        return names;
     }
 
     @Operation(summary = "Returns version summaries for a specific workflow (no definition bodies)")
     @GetMapping("/workflow/{name}/versions")
     public List<WorkflowDefSummary> getWorkflowVersions(@PathVariable("name") String name) {
-        return metadataService.getWorkflowVersions(name);
+        List<WorkflowDefSummary> versions = metadataService.getWorkflowVersions(name);
+        LOGGER.info(
+                "GET /workflow/{}/versions — returning {} version summaries",
+                name,
+                versions.size());
+        return versions;
     }
 
     @Operation(

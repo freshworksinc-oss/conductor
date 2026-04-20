@@ -120,16 +120,26 @@ export function useSaveWorkflow(callbacks) {
   );
 }
 
+
+function useWorkflowNamesAndVersionsQuery() {
+  return useFetch(
+    ["workflowNamesAndVersions"],
+    "/metadata/workflow/names-and-versions",
+    {
+      staleTime: STALE_TIME_WORKFLOW_DEFS,
+    }
+  );
+}
+
 export function useWorkflowNames() {
-  const { data } = useWorkflowDefs();
-  // Extract unique names
+  const { data } = useWorkflowNamesAndVersionsQuery();
+
   return useMemo(() => {
-    if (data) {
-      const nameSet = new Set(data.map((def) => def.name));
-      return Array.from(nameSet);
-    } else {
+    if (!data) {
       return [];
     }
+
+    return data instanceof Map ? Array.from(data.keys()) : Object.keys(data);
   }, [data]);
 }
 

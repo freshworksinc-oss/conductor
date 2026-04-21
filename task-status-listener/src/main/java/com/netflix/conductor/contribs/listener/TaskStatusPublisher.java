@@ -210,9 +210,9 @@ public class TaskStatusPublisher implements TaskStatusListener {
         String existingTaskJson = taskNotification.toJsonStringWithInputOutput();
 
         if (!Objects.nonNull(accountId) || accountId.toString().trim().isEmpty()) {
-            accountId = "task_" + taskNotification.getTaskId();
+            accountId = "-1";
             LOGGER.warn(
-                    "Account ID is missing in task input. Task ID: {}, Workflow ID: {}. Using task ID as fallback account: {}",
+                    "Account ID is missing in task input. Task ID: {}, Workflow ID: {}. Using default fallback account_id: {}",
                     taskNotification.getTaskId(),
                     taskNotification.getWorkflowId(),
                     accountId);

@@ -225,9 +225,9 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         String existingWorkflowJson = statusChangeNotification.toJsonStringWithInputOutput();
 
         if (!Objects.nonNull(accountId) || accountId.toString().trim().isEmpty()) {
-            accountId = "workflow_" + statusChangeNotification.getWorkflowId();
+            accountId = "-1";
             LOGGER.warn(
-                    "Account ID is missing in workflow input. Workflow ID: {}. Using workflow ID as fallback account: {}",
+                    "Account ID is missing in workflow input. Workflow ID: {}. Using default fallback account_id: {}",
                     statusChangeNotification.getWorkflowId(),
                     accountId);
         }

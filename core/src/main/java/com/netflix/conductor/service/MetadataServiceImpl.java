@@ -241,7 +241,17 @@ public class MetadataServiceImpl implements MetadataService {
 
         List<WorkflowDef> paginatedResults = allWorkflows.subList(fromIndex, toIndex);
         return new SearchResult<>(totalHits, paginatedResults);
-    }    
+    }
+
+    @Override
+    public List<String> getWorkflowNames() {
+        return metadataDAO.getWorkflowNames();
+    }
+
+    @Override
+    public List<WorkflowDefSummary> getWorkflowVersions(String name) {
+        return metadataDAO.getWorkflowVersions(name);
+    }
 
     public Map<String, ? extends Iterable<WorkflowDefSummary>> getWorkflowNamesAndVersions() {
         List<WorkflowDef> workflowDefs = metadataDAO.getAllWorkflowDefs();

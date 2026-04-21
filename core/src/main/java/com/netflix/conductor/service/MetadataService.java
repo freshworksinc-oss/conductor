@@ -24,6 +24,7 @@ import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.common.model.BulkResponse;
 import com.netflix.conductor.common.run.SearchResult;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -157,6 +158,17 @@ public interface MetadataService {
 
     List<WorkflowDef> getWorkflowDefsLatestVersions();
 
+    /**
+     * @return Returns distinct workflow definition names (no versions, no definition bodies)
+     */
+    List<String> getWorkflowNames();
+
+    /**
+     * @param name Name of the workflow
+     * @return Returns version summaries for a specific workflow (no definition bodies)
+     */
+    List<WorkflowDefSummary> getWorkflowVersions(
+            @NotEmpty(message = "Workflow name cannot be null or empty") String name);
 
     /**
      * Search for the latest versions of workflow definitions with pagination support.
@@ -166,5 +178,4 @@ public interface MetadataService {
      * @return SearchResult containing total count and paginated list of latest workflow definitions
      */
     SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(int start, int size);
-
 }

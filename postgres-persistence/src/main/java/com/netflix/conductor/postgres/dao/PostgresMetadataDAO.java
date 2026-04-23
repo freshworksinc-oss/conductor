@@ -21,6 +21,8 @@ import java.util.concurrent.TimeUnit;
 
 import javax.sql.DataSource;
 
+import org.apache.commons.lang3.StringUtils;
+
 import org.springframework.retry.support.RetryTemplate;
 
 import com.netflix.conductor.common.metadata.events.EventHandler;
@@ -296,6 +298,61 @@ public class PostgresMetadataDAO extends PostgresBaseDAO
                     return new SearchResult<>(totalHits, results);
                 });
     }
+
+    @Override
+    public SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(
+            int start, int size, String filterField, String filterValue) {
+        if (StringUtils.isEmpty(filterValue)) {
+            return searchWorkflowDefsLatestVersions(start, size);
+        }
+
+        // "name" has a dedicated DB column; other fields live inside json_data
+        String filterClause;
+        if ("name".equals(filterField)) {
+            filterClause = "AND name ILIKE ?";
+        } else {
+            filterClause = "AND json_data::jsonb->>'" + filterField + "' ILIKE ?";
+        }
+
+        final String countQuery =
+                "SELECT COUNT(DISTINCT name) FROM meta_workflow_def "
+                        + "WHERE version = latest_version "
+                        + filterClause;
+
+        final String searchQuery =
+                "SELECT json_data FROM meta_workflow_def "
+                        + "WHERE version = latest_version "
+                        + filterClause
+                        + " ORDER BY name LIMIT ? OFFSET ?";
+
+        String likeParam = "%" + filterValue + "%";
+
+        return getWithRetriedTransactions(
+                tx -> {
+                    long totalHits =
+                            query(
+                                    tx,
+                                    countQuery,
+                                    q -> {
+                                        Long count =
+                                                q.addParameter(likeParam).executeScalar(Long.class);
+                                        return count != null ? count : 0L;
+                                    });
+
+                    List<WorkflowDef> results =
+                            query(
+                                    tx,
+                                    searchQuery,
+                                    q ->
+                                            q.addParameter(likeParam)
+                                                    .addParameter(size)
+                                                    .addParameter(start)
+                                                    .executeAndFetch(WorkflowDef.class));
+
+                    return new SearchResult<>(totalHits, results);
+                });
+    }
+
 
     public List<WorkflowDef> getAllLatest() {
         final String GET_ALL_LATEST_WORKFLOW_DEF_QUERY =

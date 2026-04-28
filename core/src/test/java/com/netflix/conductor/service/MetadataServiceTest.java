@@ -673,6 +673,88 @@ public class MetadataServiceTest {
 
         verify(metadataDAO, times(3)).getAllWorkflowDefsLatestVersions();
     }
+    
+    @Test
+    public void testSearchWorkflowDefsLatestVersionsWithFilterPaginatedDAO() {
+        MetadataDAO paginatedDAO =
+                mock(
+                        MetadataDAO.class,
+                        org.mockito.Mockito.withSettings()
+                                .extraInterfaces(PaginatedMetadataDAO.class));
+        EventHandlerDAO eventHandlerDAO = mock(EventHandlerDAO.class);
+        ConductorProperties properties = mock(ConductorProperties.class);
+        when(properties.isOwnerEmailMandatory()).thenReturn(true);
+
+        List<WorkflowDef> workflowDefs = new ArrayList<>();
+        WorkflowDef def = new WorkflowDef();
+        def.setName("payment_workflow");
+        def.setVersion(1);
+        workflowDefs.add(def);
+
+        SearchResult<WorkflowDef> expectedResult = new SearchResult<>(1, workflowDefs);
+        when(((PaginatedMetadataDAO) paginatedDAO)
+                        .searchWorkflowDefsLatestVersions(0, 10, "name", "payment"))
+                .thenReturn(expectedResult);
+
+        MetadataService service =
+                new MetadataServiceImpl(paginatedDAO, eventHandlerDAO, properties);
+        SearchResult<WorkflowDef> result =
+                service.searchWorkflowDefsLatestVersions(0, 10, "name", "payment");
+
+        assertNotNull(result);
+        assertEquals(1, result.getTotalHits());
+        assertEquals("payment_workflow", result.getResults().get(0).getName());
+        verify((PaginatedMetadataDAO) paginatedDAO, times(1))
+                .searchWorkflowDefsLatestVersions(0, 10, "name", "payment");
+    }
+
+    @Test
+    public void testSearchWorkflowDefsLatestVersionsWithFilterFallbackIgnoresFilter() {
+        // When the DAO does NOT implement PaginatedMetadataDAO, the filter is ignored
+        // and unfiltered paginated results are returned. The UI handles client-side filtering.
+        List<WorkflowDef> allWorkflowDefs = new ArrayList<>();
+        for (int i = 1; i <= 10; i++) {
+            WorkflowDef def = new WorkflowDef();
+            def.setName("workflow_" + i);
+            def.setDescription(i <= 3 ? "payment processing" : "order management");
+            def.setVersion(1);
+            allWorkflowDefs.add(def);
+        }
+
+        when(metadataDAO.getAllWorkflowDefsLatestVersions()).thenReturn(allWorkflowDefs);
+
+        SearchResult<WorkflowDef> result =
+                metadataService.searchWorkflowDefsLatestVersions(0, 10, "description", "payment");
+
+        assertNotNull(result);
+        assertEquals(10, result.getTotalHits());
+        assertEquals(10, result.getResults().size());
+    }
+
+    @Test
+    public void testSearchWorkflowDefsLatestVersionsWithEmptyFilterDelegatesToPagination() {
+        List<WorkflowDef> allWorkflowDefs = new ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            WorkflowDef def = new WorkflowDef();
+            def.setName("workflow_" + i);
+            def.setVersion(1);
+            allWorkflowDefs.add(def);
+        }
+
+        when(metadataDAO.getAllWorkflowDefsLatestVersions()).thenReturn(allWorkflowDefs);
+
+        SearchResult<WorkflowDef> result =
+                metadataService.searchWorkflowDefsLatestVersions(0, 10, "name", "");
+
+        assertNotNull(result);
+        assertEquals(5, result.getTotalHits());
+        assertEquals(5, result.getResults().size());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testSearchWorkflowDefsLatestVersionsWithInvalidField() {
+        metadataService.searchWorkflowDefsLatestVersions(0, 10, "invalidField", "test");
+    }
 
     @Test
     public void testSearchWorkflowDefsLatestVersionsFallbackOutOfBounds() {

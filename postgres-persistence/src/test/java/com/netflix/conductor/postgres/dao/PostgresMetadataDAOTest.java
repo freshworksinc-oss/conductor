@@ -489,6 +489,76 @@ public class PostgresMetadataDAOTest {
         }
     }
 
+    @Test
+    public void testSearchWorkflowDefsLatestVersionsFilterByName() {
+        metadataDAO.createWorkflowDef(createWorkflowDef("fn_xpay_alpha", 1));
+        metadataDAO.createWorkflowDef(createWorkflowDef("fn_xorder_beta", 1));
+        metadataDAO.createWorkflowDef(createWorkflowDef("fn_xpay_gamma", 1));
+
+        SearchResult<WorkflowDef> result =
+                metadataDAO.searchWorkflowDefsLatestVersions(0, 100, "name", "fn_xpay");
+
+        assertNotNull(result);
+        assertEquals(2, result.getTotalHits());
+        assertTrue(result.getResults().stream().allMatch(wd -> wd.getName().contains("fn_xpay")));
+    }
+
+    @Test
+    public void testSearchWorkflowDefsLatestVersionsFilterByNameCaseInsensitive() {
+        metadataDAO.createWorkflowDef(createWorkflowDef("filter_ci_PaymentFlow", 1));
+        metadataDAO.createWorkflowDef(createWorkflowDef("filter_ci_orderflow", 1));
+
+        SearchResult<WorkflowDef> result =
+                metadataDAO.searchWorkflowDefsLatestVersions(0, 100, "name", "PAYMENT");
+
+        assertNotNull(result);
+        assertEquals(1, result.getTotalHits());
+        assertEquals("filter_ci_PaymentFlow", result.getResults().get(0).getName());
+    }
+
+    @Test
+    public void testSearchWorkflowDefsLatestVersionsFilterNoMatch() {
+        metadataDAO.createWorkflowDef(createWorkflowDef("filter_nomatch_alpha", 1));
+
+        SearchResult<WorkflowDef> result =
+                metadataDAO.searchWorkflowDefsLatestVersions(
+                        0, 100, "name", "nonexistent_xyz_12345");
+
+        assertNotNull(result);
+        assertEquals(0, result.getTotalHits());
+        assertEquals(0, result.getResults().size());
+    }
+
+    @Test
+    public void testSearchWorkflowDefsLatestVersionsFilterWithPagination() {
+        for (int i = 1; i <= 10; i++) {
+            metadataDAO.createWorkflowDef(createWorkflowDef("filter_paged_item_" + i, 1));
+        }
+        metadataDAO.createWorkflowDef(createWorkflowDef("filter_paged_other", 1));
+
+        SearchResult<WorkflowDef> firstPage =
+                metadataDAO.searchWorkflowDefsLatestVersions(0, 5, "name", "filter_paged_item");
+        SearchResult<WorkflowDef> secondPage =
+                metadataDAO.searchWorkflowDefsLatestVersions(5, 5, "name", "filter_paged_item");
+
+        assertEquals(10, firstPage.getTotalHits());
+        assertEquals(5, firstPage.getResults().size());
+        assertEquals(10, secondPage.getTotalHits());
+        assertEquals(5, secondPage.getResults().size());
+    }
+
+    @Test
+    public void testSearchWorkflowDefsLatestVersionsFilterEmptyValueFallsBack() {
+        metadataDAO.createWorkflowDef(createWorkflowDef("filter_empty_test", 1));
+
+        SearchResult<WorkflowDef> result =
+                metadataDAO.searchWorkflowDefsLatestVersions(0, 1000, "name", "");
+
+        assertNotNull(result);
+        assertTrue(result.getTotalHits() > 0);
+    }
+    
+
     private WorkflowDef createWorkflowDef(String name, int version) {
         WorkflowDef def = new WorkflowDef();
         def.setName(name);

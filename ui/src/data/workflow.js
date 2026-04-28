@@ -88,13 +88,24 @@ export function useWorkflowDefs() {
   });
 }
 
-export function useLatestWorkflowDefs(pagination) {
-  const path = pagination
-    ? `/metadata/workflow/latest-versions?${qs.stringify(pagination)}`
+export function useLatestWorkflowDefs(pagination, filter) {
+  const params = { ...pagination };
+  if (filter && filter.filterField && filter.filterValue) {
+    params.filterField = filter.filterField;
+    params.filterValue = filter.filterValue;
+  }
+
+  const hasParams = Object.keys(params).length > 0;
+  const path = hasParams
+    ? `/metadata/workflow/latest-versions?${qs.stringify(params)}`
     : "/metadata/workflow/latest-versions";
 
+  const cacheKey = hasParams
+    ? `${params.start}-${params.size}-${params.filterField || ""}-${params.filterValue || ""}`
+    : "all";
+
   return useFetch(
-    ["latestWorkflowDefs", pagination ? `${pagination.start}-${pagination.size}` : "all"],
+    ["latestWorkflowDefs", cacheKey],
     path,
     {
       staleTime: STALE_TIME_WORKFLOW_DEFS,
@@ -102,6 +113,7 @@ export function useLatestWorkflowDefs(pagination) {
     }
   );
 }
+
 
 export function useSaveWorkflow(callbacks) {
   const path = "/metadata/workflow";

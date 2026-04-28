@@ -178,4 +178,18 @@ public interface MetadataService {
      * @return SearchResult containing total count and paginated list of latest workflow definitions
      */
     SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(int start, int size);
+    
+    /**
+     * Search for the latest versions of workflow definitions with pagination and field-level
+     * filtering.
+     *
+     * @param start Starting index for pagination (0-based)
+     * @param size Number of results to return per page
+     * @param filterField The workflow definition field to filter on (e.g., "name", "description")
+     * @param filterValue The substring to match against the specified field (case-insensitive)
+     * @return SearchResult containing total count and filtered, paginated list of latest workflow
+     *     definitions
+     */
+    SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(
+        int start, int size, String filterField, String filterValue);
 }

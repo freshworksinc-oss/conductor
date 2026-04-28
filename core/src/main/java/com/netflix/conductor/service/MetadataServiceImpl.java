@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeSet;
 
 import org.conductoross.conductor.core.listener.MetadataChangeListener;
@@ -41,6 +42,17 @@ import com.netflix.conductor.validations.ValidationContext;
 @Service
 public class MetadataServiceImpl implements MetadataService {
     private static final Logger LOGGER = LoggerFactory.getLogger(MetadataServiceImpl.class);
+    private static final Set<String> ALLOWED_FILTER_FIELDS =
+            Set.of(
+                    "name",
+                    "description",
+                    "ownerEmail",
+                    "version",
+                    "schemaVersion",
+                    "timeoutPolicy",
+                    "timeoutSeconds",
+                    "restartable",
+                    "workflowStatusListenerEnabled");    
     private final MetadataDAO metadataDAO;
     private final EventHandlerDAO eventHandlerDAO;
     private final MetadataChangeListener metadataChangeListener;
@@ -258,6 +270,28 @@ public class MetadataServiceImpl implements MetadataService {
 
         List<WorkflowDef> paginatedResults = allWorkflows.subList(fromIndex, toIndex);
         return new SearchResult<>(totalHits, paginatedResults);
+    }
+
+    
+    @Override
+    public SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(
+            int start, int size, String filterField, String filterValue) {
+        if (filterValue == null || filterValue.isEmpty()) {
+            return searchWorkflowDefsLatestVersions(start, size);
+        }
+
+        if (filterField == null || !ALLOWED_FILTER_FIELDS.contains(filterField)) {
+            throw new IllegalArgumentException("Invalid filter field: " + filterField);
+        }
+
+        if (metadataDAO instanceof PaginatedMetadataDAO) {
+            return ((PaginatedMetadataDAO) metadataDAO)
+                    .searchWorkflowDefsLatestVersions(start, size, filterField, filterValue);
+        }
+
+        // Non-Postgres DAOs don't support server-side filtering.
+        // Return unfiltered paginated results; the UI handles client-side filtering.
+        return searchWorkflowDefsLatestVersions(start, size);
     }
 
     public Map<String, ? extends Iterable<WorkflowDefSummary>> getWorkflowNamesAndVersions() {

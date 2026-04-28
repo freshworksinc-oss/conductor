@@ -30,4 +30,21 @@ public interface PaginatedMetadataDAO {
      * @return SearchResult containing total count and paginated list of latest workflow definitions
      */
     SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(int start, int size);
+    
+    /**
+     * Search for the latest versions of workflow definitions with pagination and field-level
+     * filtering. When filterField and filterValue are both non-null and non-empty, only workflow
+     * definitions where the specified field contains the given value (case-insensitive) are
+     * returned.
+     *
+     * @param start Starting index for pagination (0-based)
+     * @param size Number of results to return per page
+     * @param filterField The workflow definition field to filter on (e.g., "name", "description",
+     *     "ownerEmail")
+     * @param filterValue The substring to match against the specified field (case-insensitive)
+     * @return SearchResult containing total count and filtered, paginated list of latest workflow
+     *     definitions
+     */
+    SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(
+        int start, int size, String filterField, String filterValue);
 }

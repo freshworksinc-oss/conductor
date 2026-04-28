@@ -75,6 +75,27 @@ public class TenantMetadataDAO {
         }
     }
 
+    /** Get distinct workflow definition names for the given tenant. */
+    public List<String> getWorkflowNamesByTenant(String tenantId) {
+        String sql = "SELECT DISTINCT json_data::jsonb->>'name' AS name FROM meta_workflow_def "
+                + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                + "ORDER BY name";
+        List<String> results = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, tenantId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    results.add(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("Database query failed: {}", sql, e);
+            throw new RuntimeException("Database query failed", e);
+        }
+        return results;
+    }
+
     /** Get all task definitions belonging to the given tenant. */
     public List<TaskDef> getTaskDefsByTenant(String tenantId) {
         String sql = "SELECT json_data FROM meta_task_def "

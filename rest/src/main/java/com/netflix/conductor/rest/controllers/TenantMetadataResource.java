@@ -34,6 +34,12 @@ public class TenantMetadataResource {
         return tenantMetadataDAO.getWorkflowDefsLatestVersionsByTenant(tenantId);
     }
 
+    @GetMapping("/workflow/names")
+    public List<String> getWorkflowNames(
+            @RequestHeader("X-Tenant-ID") String tenantId) {
+        return tenantMetadataDAO.getWorkflowNamesByTenant(tenantId);
+    }
+
     @GetMapping("/workflow/names-and-versions")
     public Map<String, List<WorkflowDefSummary>> getWorkflowNamesAndVersions(
             @RequestHeader("X-Tenant-ID") String tenantId) {

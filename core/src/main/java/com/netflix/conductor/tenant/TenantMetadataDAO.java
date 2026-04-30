@@ -75,6 +75,45 @@ public class TenantMetadataDAO {
         }
     }
 
+    /** Get version summaries for a specific workflow name for the given tenant. */
+    public List<WorkflowDefSummary> getWorkflowVersionsByTenant(String tenantId, String name) {
+        String sql = "SELECT json_data FROM meta_workflow_def "
+                + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                + "AND name = ? "
+                + "ORDER BY version";
+        List<WorkflowDef> defs = queryList(sql, tenantId, name, WorkflowDef.class);
+        List<WorkflowDefSummary> results = new ArrayList<>();
+        for (WorkflowDef def : defs) {
+            WorkflowDefSummary summary = new WorkflowDefSummary();
+            summary.setName(def.getName());
+            summary.setVersion(def.getVersion());
+            summary.setCreateTime(def.getCreateTime());
+            results.add(summary);
+        }
+        return results;
+    }
+
+    /** Get distinct workflow definition names for the given tenant. */
+    public List<String> getWorkflowNamesByTenant(String tenantId) {
+        String sql = "SELECT DISTINCT json_data::jsonb->>'name' AS name FROM meta_workflow_def "
+                + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                + "ORDER BY name";
+        List<String> results = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, tenantId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    results.add(rs.getString(1));
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("Database query failed: {}", sql, e);
+            throw new RuntimeException("Database query failed", e);
+        }
+        return results;
+    }
+
     /** Get all task definitions belonging to the given tenant. */
     public List<TaskDef> getTaskDefsByTenant(String tenantId) {
         String sql = "SELECT json_data FROM meta_task_def "
@@ -92,6 +131,27 @@ public class TenantMetadataDAO {
     }
 
     // ---- internal helpers ----
+
+    private <T> List<T> queryList(String sql, String param1, String param2, Class<T> type) {
+        List<T> results = new ArrayList<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, param1);
+            ps.setString(2, param2);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    results.add(objectMapper.readValue(rs.getString(1), type));
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("Database query failed: {}", sql, e);
+            throw new RuntimeException("Database query failed", e);
+        } catch (Exception e) {
+            LOGGER.error("JSON deserialization failed", e);
+            throw new RuntimeException("JSON deserialization failed", e);
+        }
+        return results;
+    }
 
     private <T> List<T> queryList(String sql, String param, Class<T> type) {
         List<T> results = new ArrayList<>();

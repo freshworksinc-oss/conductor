@@ -17,6 +17,7 @@ import java.io.InterruptedIOException;
 import java.net.SocketException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import javax.net.ssl.SSLException;
 
@@ -187,9 +188,18 @@ public class RestClientManager {
         notifId = id;
         String url = prepareUrl(notifType, statusNotifier);
 
+        String requestId = UUID.randomUUID().toString();
+
         Map<String, String> headers = new HashMap<>();
         if (config.getHeaderPrefer() != "" && config.getHeaderPreferValue() != "")
             headers.put(config.getHeaderPrefer(), config.getHeaderPreferValue());
+        headers.put("x-request-id", requestId);
+
+        logger.info(
+                "{} notification for id: {} with x-request-id: {}",
+                notifType,
+                id,
+                requestId);
 
         HttpPost request = createPostRequest(url, data, headers);
         long start = System.currentTimeMillis();

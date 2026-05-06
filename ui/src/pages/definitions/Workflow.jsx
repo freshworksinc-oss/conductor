@@ -8,6 +8,7 @@ import Header from "./Header";
 import sharedStyles from "../styles";
 import { Helmet } from "react-helmet";
 import AddIcon from "@material-ui/icons/Add";
+import RoleGate from "../../components/RoleGate";
 
 const useStyles = makeStyles(sharedStyles);
 
@@ -129,13 +130,15 @@ export default function WorkflowDefinitions() {
 
       <div className={classes.tabContent}>
         <div className={classes.buttonRow}>
-          <Button
-            component={NavLink}
-            path="/workflowDef"
-            startIcon={<AddIcon />}
-          >
-            New Workflow Definition
-          </Button>
+          <RoleGate minRole="Editor">
+            <Button
+              component={NavLink}
+              path="/workflowDef"
+              startIcon={<AddIcon />}
+            >
+              New Workflow Definition
+            </Button>
+          </RoleGate>
         </div>
 
         {workflows && (

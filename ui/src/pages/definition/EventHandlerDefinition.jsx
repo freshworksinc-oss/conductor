@@ -11,6 +11,8 @@ import { useEventHandler } from "../../data/eventHandler";
 import ResetConfirmationDialog from "./ResetConfirmationDialog";
 import { usePushHistory } from "../../components/NavLink";
 import SaveEventHandlerDialog from "./SaveEventHandlerDialog";
+import RoleGate from "../../components/RoleGate";
+import { useTenant } from "../../components/TenantContext";
 
 const useStyles = makeStyles({
   wrapper: {
@@ -34,6 +36,7 @@ export default function EventHandlerDefinition() {
   const classes = useStyles();
   const match = useRouteMatch();
   const navigate = usePushHistory();
+  const { canAccess } = useTenant();
 
   const [isModified, setIsModified] = useState(false);
   const [jsonErrors, setJsonErrors] = useState([]);
@@ -134,19 +137,21 @@ export default function EventHandlerDefinition() {
           {!_.isEmpty(jsonErrors) && <Pill color="red" label="Validation" />}
 
           <div className={classes.rightButtons}>
-            <Button
-              disabled={!_.isEmpty(jsonErrors) || !isModified}
-              onClick={handleOpenSave}
-            >
-              Save
-            </Button>
-            <Button
-              disabled={!isModified}
-              onClick={() => setResetDialog(true)}
-              variant="secondary"
-            >
-              Reset
-            </Button>
+            <RoleGate minRole="Editor">
+              <Button
+                disabled={!_.isEmpty(jsonErrors) || !isModified}
+                onClick={handleOpenSave}
+              >
+                Save
+              </Button>
+              <Button
+                disabled={!isModified}
+                onClick={() => setResetDialog(true)}
+                variant="secondary"
+              >
+                Reset
+              </Button>
+            </RoleGate>
           </div>
         </Toolbar>
 
@@ -163,6 +168,7 @@ export default function EventHandlerDefinition() {
           onChange={handleChange}
           options={{
             selectOnLineNumbers: true,
+            readOnly: !canAccess("Editor"),
             minimap: {
               enabled: false,
             },

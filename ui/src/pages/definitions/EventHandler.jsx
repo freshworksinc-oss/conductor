@@ -6,6 +6,7 @@ import sharedStyles from "../styles";
 import { Helmet } from "react-helmet";
 import { useEventHandlers } from "../../data/misc";
 import AddIcon from "@material-ui/icons/Add";
+import RoleGate from "../../components/RoleGate";
 
 const useStyles = makeStyles(sharedStyles);
 
@@ -41,9 +42,11 @@ export default function EventHandlers() {
 
       <div className={classes.tabContent}>
         <div className={classes.buttonRow}>
-          <Button component={NavLink} path="/eventHandlerDef" startIcon={<AddIcon />}>
-            New Event Handler Definition
-          </Button>
+          <RoleGate minRole="Editor">
+            <Button component={NavLink} path="/eventHandlerDef" startIcon={<AddIcon />}>
+              New Event Handler Definition
+            </Button>
+          </RoleGate>
         </div>
 
         {eventHandlers && (

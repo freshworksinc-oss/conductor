@@ -224,6 +224,11 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         // Get the existing workflow JSON (with all current fields)
         String existingWorkflowJson = statusChangeNotification.toJsonStringWithInputOutput();
 
+        // DEBUG: Print raw existingWorkflowJson (bypassing JSON logger formatting)
+        System.out.println("=== WORKFLOW DEBUG START - WorkflowId: " + statusChangeNotification.getWorkflowId() + " ===");
+        System.out.println("[DEBUG-1] existingWorkflowJson:");
+        System.out.println(existingWorkflowJson);
+
         if (!Objects.nonNull(accountId) || accountId.toString().trim().isEmpty()) {
             accountId = "-1";
             LOGGER.warn(
@@ -235,6 +240,15 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         // Parse existing JSON into JsonNode for wrapping
         JsonNode existingPayload = objectMapper.readTree(existingWorkflowJson);
 
+        // DEBUG: Print the input field value from parsed JsonNode
+        JsonNode inputNode = existingPayload.get("input");
+        if (inputNode != null) {
+            System.out.println("[DEBUG-2] inputNode.asText():");
+            System.out.println(inputNode.asText());
+            System.out.println("[DEBUG-3] inputNode.toString():");
+            System.out.println(inputNode.toString());
+        }
+
         // Wrap in Central envelope
         ObjectNode centralMessage = objectMapper.createObjectNode();
         centralMessage.put("account_id", String.valueOf(accountId));
@@ -243,6 +257,11 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         centralMessage.set("payload", existingPayload); // Keep ALL existing fields
 
         String wrappedJson = centralMessage.toString();
+
+        // DEBUG: Print final wrappedJson
+        System.out.println("[DEBUG-4] wrappedJson:");
+        System.out.println(wrappedJson);
+        System.out.println("=== WORKFLOW DEBUG END ===");
 
         LOGGER.info(
                 "Preparing to publish Workflow to Central with envelope. Workflow ID: {}, Account ID: {}",

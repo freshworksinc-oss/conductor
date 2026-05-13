@@ -209,6 +209,11 @@ public class TaskStatusPublisher implements TaskStatusListener {
         // Get the existing task JSON (with all current fields)
         String existingTaskJson = taskNotification.toJsonStringWithInputOutput();
 
+        // DEBUG: Print raw existingTaskJson (bypassing JSON logger formatting)
+        System.out.println("=== TASK DEBUG START - TaskId: " + taskNotification.getTaskId() + " ===");
+        System.out.println("[DEBUG-1] existingTaskJson:");
+        System.out.println(existingTaskJson);
+
         if (!Objects.nonNull(accountId) || accountId.toString().trim().isEmpty()) {
             accountId = "-1";
             LOGGER.warn(
@@ -221,6 +226,15 @@ public class TaskStatusPublisher implements TaskStatusListener {
         // Parse existing JSON into JsonNode for wrapping
         JsonNode existingPayload = objectMapper.readTree(existingTaskJson);
 
+        // DEBUG: Print the input field value from parsed JsonNode
+        JsonNode inputNode = existingPayload.get("input");
+        if (inputNode != null) {
+            System.out.println("[DEBUG-2] inputNode.asText():");
+            System.out.println(inputNode.asText());
+            System.out.println("[DEBUG-3] inputNode.toString():");
+            System.out.println(inputNode.toString());
+        }
+
         // Wrap in Central envelope
         ObjectNode centralMessage = objectMapper.createObjectNode();
         centralMessage.put("account_id", String.valueOf(accountId));
@@ -229,6 +243,11 @@ public class TaskStatusPublisher implements TaskStatusListener {
         centralMessage.set("payload", existingPayload); // Keep ALL existing fields
 
         String wrappedJson = centralMessage.toString();
+
+        // DEBUG: Print final wrappedJson
+        System.out.println("[DEBUG-4] wrappedJson:");
+        System.out.println(wrappedJson);
+        System.out.println("=== TASK DEBUG END ===");
 
         LOGGER.info(
                 "Publishing Task to Central with envelope. Task ID: {}, Account ID: {}",

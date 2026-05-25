@@ -25,6 +25,7 @@ import com.netflix.conductor.dao.QueueDAO;
 import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.model.TaskModel;
 import com.netflix.conductor.model.WorkflowModel;
+import com.netflix.conductor.tracing.WorkflowExecutionTracing;
 
 @Component
 public class AsyncSystemTaskExecutor {
@@ -35,6 +36,7 @@ public class AsyncSystemTaskExecutor {
     private final long queueTaskMessagePostponeSecs;
     private final long systemTaskCallbackTime;
     private final WorkflowExecutor workflowExecutor;
+    private final WorkflowExecutionTracing workflowExecutionTracing;
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AsyncSystemTaskExecutor.class);
 
@@ -43,11 +45,13 @@ public class AsyncSystemTaskExecutor {
             QueueDAO queueDAO,
             MetadataDAO metadataDAO,
             ConductorProperties conductorProperties,
-            WorkflowExecutor workflowExecutor) {
+            WorkflowExecutor workflowExecutor,
+            WorkflowExecutionTracing workflowExecutionTracing) {
         this.executionDAOFacade = executionDAOFacade;
         this.queueDAO = queueDAO;
         this.metadataDAO = metadataDAO;
         this.workflowExecutor = workflowExecutor;
+        this.workflowExecutionTracing = workflowExecutionTracing;
         this.systemTaskCallbackTime =
                 conductorProperties.getSystemTaskWorkerCallbackDuration().getSeconds();
         this.queueTaskMessagePostponeSecs =
@@ -135,54 +139,19 @@ public class AsyncSystemTaskExecutor {
                 return;
             }
 
-            LOGGER.debug(
-                    "Executing {}/{} in {} state",
-                    task.getTaskType(),
-                    task.getTaskId(),
-                    task.getStatus());
-
-            boolean isTaskAsyncComplete = systemTask.isAsyncComplete(task);
-            if (task.getStatus() == TaskModel.Status.SCHEDULED || !isTaskAsyncComplete) {
-                task.incrementPollCount();
-            }
-
-            if (task.getStatus() == TaskModel.Status.SCHEDULED) {
-                task.setStartTime(System.currentTimeMillis());
-                Monitors.recordQueueWaitTime(task.getTaskType(), task.getQueueWaitTime());
-                systemTask.start(workflow, task, workflowExecutor);
-            } else if (task.getStatus() == TaskModel.Status.IN_PROGRESS) {
-                systemTask.execute(workflow, task, workflowExecutor);
-            }
-
-            // Update message in Task queue based on Task status
-            // Remove asyncComplete system tasks from the queue that are not in SCHEDULED state
-            if (isTaskAsyncComplete && task.getStatus() != TaskModel.Status.SCHEDULED) {
-                shouldRemoveTaskFromQueue = true;
-                hasTaskExecutionCompleted = true;
-            } else if (task.getStatus().isTerminal()) {
-                task.setEndTime(System.currentTimeMillis());
-                shouldRemoveTaskFromQueue = true;
-                hasTaskExecutionCompleted = true;
-            } else {
-                task.setCallbackAfterSeconds(systemTaskCallbackTime);
-                systemTask
-                        .getEvaluationOffset(task, systemTaskCallbackTime)
-                        .ifPresentOrElse(
-                                task::setCallbackAfterSeconds,
-                                () -> task.setCallbackAfterSeconds(systemTaskCallbackTime));
-                queueDAO.postpone(
-                        queueName,
-                        task.getTaskId(),
-                        task.getWorkflowPriority(),
-                        task.getCallbackAfterSeconds());
-                LOGGER.debug("{} postponed in queue: {}", task, queueName);
-            }
-
-            LOGGER.debug(
-                    "Finished execution of {}/{}-{}",
+            final SystemTaskExecutionResult[] resultHolder = new SystemTaskExecutionResult[1];
+            workflowExecutionTracing.executeSystemTask(
+                    workflow,
+                    task,
                     systemTask,
-                    task.getTaskId(),
-                    task.getStatus());
+                    () ->
+                            resultHolder[0] =
+                                    runSystemTaskLogic(systemTask, task, workflow, queueName));
+            SystemTaskExecutionResult result = resultHolder[0];
+            if (result != null) {
+                hasTaskExecutionCompleted = result.hasTaskExecutionCompleted;
+                shouldRemoveTaskFromQueue = result.shouldRemoveTaskFromQueue;
+            }
         } catch (Exception e) {
             Monitors.error(AsyncSystemTaskExecutor.class.getSimpleName(), "executeSystemTask");
             LOGGER.error("Error executing system task - {}, with id: {}", systemTask, taskId, e);
@@ -197,6 +166,66 @@ public class AsyncSystemTaskExecutor {
                 workflowExecutor.decide(workflowId);
             }
         }
+    }
+
+    private SystemTaskExecutionResult runSystemTaskLogic(
+            WorkflowSystemTask systemTask,
+            TaskModel task,
+            WorkflowModel workflow,
+            String queueName) {
+        boolean hasTaskExecutionCompleted = false;
+        boolean shouldRemoveTaskFromQueue = false;
+
+        LOGGER.debug(
+                "Executing {}/{} in {} state",
+                task.getTaskType(),
+                task.getTaskId(),
+                task.getStatus());
+
+        boolean isTaskAsyncComplete = systemTask.isAsyncComplete(task);
+        if (task.getStatus() == TaskModel.Status.SCHEDULED || !isTaskAsyncComplete) {
+            task.incrementPollCount();
+        }
+
+        if (task.getStatus() == TaskModel.Status.SCHEDULED) {
+            task.setStartTime(System.currentTimeMillis());
+            Monitors.recordQueueWaitTime(task.getTaskType(), task.getQueueWaitTime());
+            systemTask.start(workflow, task, workflowExecutor);
+        } else if (task.getStatus() == TaskModel.Status.IN_PROGRESS) {
+            systemTask.execute(workflow, task, workflowExecutor);
+        }
+
+        // Update message in Task queue based on Task status
+        // Remove asyncComplete system tasks from the queue that are not in SCHEDULED state
+        if (isTaskAsyncComplete && task.getStatus() != TaskModel.Status.SCHEDULED) {
+            shouldRemoveTaskFromQueue = true;
+            hasTaskExecutionCompleted = true;
+        } else if (task.getStatus().isTerminal()) {
+            task.setEndTime(System.currentTimeMillis());
+            shouldRemoveTaskFromQueue = true;
+            hasTaskExecutionCompleted = true;
+        } else {
+            task.setCallbackAfterSeconds(systemTaskCallbackTime);
+            systemTask
+                    .getEvaluationOffset(task, systemTaskCallbackTime)
+                    .ifPresentOrElse(
+                            task::setCallbackAfterSeconds,
+                            () -> task.setCallbackAfterSeconds(systemTaskCallbackTime));
+            queueDAO.postpone(
+                    queueName,
+                    task.getTaskId(),
+                    task.getWorkflowPriority(),
+                    task.getCallbackAfterSeconds());
+            LOGGER.debug("{} postponed in queue: {}", task, queueName);
+        }
+
+        LOGGER.debug(
+                "Finished execution of {}/{}-{}",
+                systemTask,
+                task.getTaskId(),
+                task.getStatus());
+
+        return new SystemTaskExecutionResult(hasTaskExecutionCompleted, shouldRemoveTaskFromQueue);
     }
 
     private void postponeQuietly(String queueName, TaskModel task) {
@@ -216,6 +245,17 @@ public class AsyncSystemTaskExecutor {
             return executionDAOFacade.getTaskModel(taskId);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    private static final class SystemTaskExecutionResult {
+        private final boolean hasTaskExecutionCompleted;
+        private final boolean shouldRemoveTaskFromQueue;
+
+        private SystemTaskExecutionResult(
+                boolean hasTaskExecutionCompleted, boolean shouldRemoveTaskFromQueue) {
+            this.hasTaskExecutionCompleted = hasTaskExecutionCompleted;
+            this.shouldRemoveTaskFromQueue = shouldRemoveTaskFromQueue;
         }
     }
 }

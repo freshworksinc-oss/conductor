@@ -38,6 +38,8 @@ import com.netflix.conductor.core.utils.ExternalPayloadStorageUtils;
 import com.netflix.conductor.dao.*;
 import com.netflix.conductor.model.TaskModel;
 import com.netflix.conductor.model.WorkflowModel;
+import com.netflix.conductor.tracing.NoopTracingFacade;
+import com.netflix.conductor.tracing.WorkflowExecutionTracing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -79,7 +81,8 @@ public class ExecutionDAOFacadeTest {
                         pollDataDAO,
                         objectMapper,
                         properties,
-                        externalPayloadStorageUtils);
+                        externalPayloadStorageUtils,
+                        new WorkflowExecutionTracing(new NoopTracingFacade()));
     }
 
     @Test

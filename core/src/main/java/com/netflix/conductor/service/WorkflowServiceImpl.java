@@ -33,6 +33,7 @@ import com.netflix.conductor.core.exception.NotFoundException;
 import com.netflix.conductor.core.execution.StartWorkflowInput;
 import com.netflix.conductor.core.execution.WorkflowExecutor;
 import com.netflix.conductor.core.utils.Utils;
+import com.netflix.conductor.tracing.BusinessTrace;
 
 @Audit
 @Trace
@@ -58,6 +59,7 @@ public class WorkflowServiceImpl implements WorkflowService {
      * @param startWorkflowRequest StartWorkflow request for the workflow you want to start.
      * @return the id of the workflow instance that can be use for tracking.
      */
+    @BusinessTrace("workflow.start")
     public String startWorkflow(StartWorkflowRequest startWorkflowRequest) {
         return workflowExecutor.startWorkflow(new StartWorkflowInput(startWorkflowRequest));
     }
@@ -76,6 +78,7 @@ public class WorkflowServiceImpl implements WorkflowService {
      * @param workflowDef - workflow definition
      * @return the id of the workflow instance that can be use for tracking.
      */
+    @BusinessTrace("workflow.start")
     public String startWorkflow(
             String name,
             Integer version,
@@ -109,6 +112,7 @@ public class WorkflowServiceImpl implements WorkflowService {
      * @param input Input to the workflow you want to start.
      * @return the id of the workflow instance that can be use for tracking.
      */
+    @BusinessTrace("workflow.start")
     public String startWorkflow(
             String name,
             Integer version,

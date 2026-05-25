@@ -25,6 +25,8 @@ import com.netflix.conductor.dao.MetadataDAO
 import com.netflix.conductor.dao.QueueDAO
 import com.netflix.conductor.model.TaskModel
 import com.netflix.conductor.model.WorkflowModel
+import com.netflix.conductor.tracing.NoopTracingFacade
+import com.netflix.conductor.tracing.WorkflowExecutionTracing
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import spock.lang.Specification
@@ -58,7 +60,7 @@ class AsyncSystemTaskExecutorTest extends Specification {
         properties.taskExecutionPostponeDuration = Duration.ofSeconds(1)
         properties.systemTaskWorkerCallbackDuration = Duration.ofSeconds(1)
 
-        executor = new AsyncSystemTaskExecutor(executionDAOFacade, queueDAO, metadataDAO, properties, workflowExecutor)
+        executor = new AsyncSystemTaskExecutor(executionDAOFacade, queueDAO, metadataDAO, properties, workflowExecutor, new WorkflowExecutionTracing(new NoopTracingFacade()))
     }
 
     // this is not strictly a unit test, but its essential to test AsyncSystemTaskExecutor with SubWorkflow

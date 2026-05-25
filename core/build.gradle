@@ -45,6 +45,9 @@ dependencies {
 
     implementation "io.micrometer:micrometer-core:${revMicrometer}"
     implementation "com.google.guava:guava:${revGuava}"
+    implementation "io.opentelemetry:opentelemetry-api:${revOpenTelemetryApi}"
+
+    compileOnly 'org.springframework.boot:spring-boot-starter-aop'
 
     //gralVm dependencies for executing python
     implementation("org.graalvm.polyglot:polyglot:24.1.0")

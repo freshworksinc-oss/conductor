@@ -47,6 +47,7 @@ import com.netflix.conductor.dao.*;
 import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.model.TaskModel;
 import com.netflix.conductor.model.WorkflowModel;
+import com.netflix.conductor.tracing.WorkflowExecutionTracing;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -76,6 +77,7 @@ public class ExecutionDAOFacade {
     private final ObjectMapper objectMapper;
     private final ConductorProperties properties;
     private final ExternalPayloadStorageUtils externalPayloadStorageUtils;
+    private final WorkflowExecutionTracing workflowExecutionTracing;
 
     private final ScheduledThreadPoolExecutor scheduledThreadPoolExecutor;
 
@@ -88,7 +90,8 @@ public class ExecutionDAOFacade {
             PollDataDAO pollDataDAO,
             ObjectMapper objectMapper,
             ConductorProperties properties,
-            ExternalPayloadStorageUtils externalPayloadStorageUtils) {
+            ExternalPayloadStorageUtils externalPayloadStorageUtils,
+            WorkflowExecutionTracing workflowExecutionTracing) {
         this.executionDAO = executionDAO;
         this.queueDAO = queueDAO;
         this.indexDAO = indexDAO;
@@ -98,6 +101,7 @@ public class ExecutionDAOFacade {
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.externalPayloadStorageUtils = externalPayloadStorageUtils;
+        this.workflowExecutionTracing = workflowExecutionTracing;
         this.scheduledThreadPoolExecutor =
                 new ScheduledThreadPoolExecutor(
                         4,
@@ -251,11 +255,14 @@ public class ExecutionDAOFacade {
         externalizeWorkflowData(workflowModel);
         executionDAO.createWorkflow(workflowModel);
         // Add to decider queue
-        queueDAO.push(
-                DECIDER_QUEUE,
-                workflowModel.getWorkflowId(),
-                workflowModel.getPriority(),
-                properties.getWorkflowOffsetTimeout().getSeconds());
+        workflowExecutionTracing.enqueueDecider(
+                workflowModel,
+                () ->
+                        queueDAO.push(
+                                DECIDER_QUEUE,
+                                workflowModel.getWorkflowId(),
+                                workflowModel.getPriority(),
+                                properties.getWorkflowOffsetTimeout().getSeconds()));
         if (properties.isAsyncIndexingEnabled()) {
             indexDAO.asyncIndexWorkflow(new WorkflowSummary(workflowModel.toWorkflow()));
         } else {

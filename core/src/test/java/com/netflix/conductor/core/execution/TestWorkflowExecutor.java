@@ -58,6 +58,8 @@ import com.netflix.conductor.dao.QueueDAO;
 import com.netflix.conductor.model.TaskModel;
 import com.netflix.conductor.model.WorkflowModel;
 import com.netflix.conductor.service.ExecutionLockService;
+import com.netflix.conductor.tracing.NoopTracingFacade;
+import com.netflix.conductor.tracing.WorkflowExecutionTracing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -217,7 +219,8 @@ public class TestWorkflowExecutor {
                         executionLockService,
                         systemTaskRegistry,
                         parametersUtils,
-                        idGenerator);
+                        idGenerator,
+                        new WorkflowExecutionTracing(new NoopTracingFacade()));
     }
 
     @Test

@@ -38,7 +38,7 @@ public class TaskStatusPublisher implements TaskStatusListener {
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskStatusPublisher.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final String PAYLOAD_VERSION = "1.0";
-    private static final String TASK_PAYLOAD_TYPE = "journey_conductor_task_event";
+    private static final String TASK_PAYLOAD_TYPE = "conductor_task_status";
     private static final Integer QDEPTH =
             Integer.parseInt(
                     System.getenv().getOrDefault("ENV_TASK_NOTIFICATION_QUEUE_SIZE", "50"));

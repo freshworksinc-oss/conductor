@@ -22,6 +22,7 @@ import com.netflix.conductor.core.events.ScriptEvaluator;
 public class JavascriptEvaluator implements Evaluator {
 
     public static final String NAME = "javascript";
+    public static final String UNIQUE_DELIMITER = "###DEL###"; // Highly unlikely sequence
     private static final Logger LOGGER = LoggerFactory.getLogger(JavascriptEvaluator.class);
 
     @Override
@@ -31,6 +32,7 @@ public class JavascriptEvaluator implements Evaluator {
         // any PolyglotMap/PolyglotList references created during eval cannot escape a closed
         // Context (see TaskModelProtoMapper.convertToJsonMap regression that motivated this).
         Object inputCopy = ScriptEvaluator.deepCopy(input);
+        expression = expression.replace(UNIQUE_DELIMITER, "\\'");
         Object result = ScriptEvaluator.eval(expression, inputCopy);
         LOGGER.debug("Javascript evaluator -- result: {}", result);
         return result;

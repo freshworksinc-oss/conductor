@@ -31,7 +31,7 @@ RUN apk add --no-cache openjdk17 curl
 
 RUN mkdir -p /app/config /app/logs /app/libs
 
-COPY docker/server/bin/caasstartup.sh /app/caasstartup.sh
+COPY docker/server/bin /app
 COPY docker/server/config /app/config
 COPY --from=builder /conductor/server/build/libs/*boot*.jar /app/libs/conductor-server.jar
 

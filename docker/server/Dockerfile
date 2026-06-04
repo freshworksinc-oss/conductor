@@ -51,6 +51,8 @@ RUN echo "Done building UI"
 # ===========================================================================================================
 FROM alpine:3.19
 
+ARG OTEL_AGENT_VERSION=2.14.0
+
 LABEL maintainer="Orkes OSS <oss@orkes.io>"
 
 RUN apk add openjdk17
@@ -59,6 +61,11 @@ RUN apk add curl
 
 # Make app folders
 RUN mkdir -p /app/config /app/logs /app/libs
+
+# OpenTelemetry Java agent for auto-instrumentation (enable at runtime via JAVA_OPTS; see docker/README.md)
+RUN curl -fsSL \
+    -o /app/libs/opentelemetry-javaagent.jar \
+    "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v${OTEL_AGENT_VERSION}/opentelemetry-javaagent.jar"
 
 # Copy the compiled output to new image
 COPY docker/server/bin /app

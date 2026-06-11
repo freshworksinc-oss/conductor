@@ -17,11 +17,13 @@ import java.util.Map;
 
 import org.junit.Test;
 
+import com.netflix.conductor.core.config.ConductorProperties;
+
 import static org.junit.Assert.*;
 
 public class JavascriptEvaluatorTest {
 
-    private final JavascriptEvaluator evaluator = new JavascriptEvaluator();
+    private final JavascriptEvaluator evaluator = new JavascriptEvaluator(new ConductorProperties());
 
     @Test
     public void testBasicEvaluation() {

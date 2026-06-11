@@ -18,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import com.netflix.conductor.core.config.ConductorProperties;
 import com.netflix.conductor.core.events.ScriptEvaluator;
 import com.netflix.conductor.core.exception.TerminateWorkflowException;
 
@@ -28,12 +29,20 @@ public class JavascriptEvaluator implements Evaluator {
     public static final String UNIQUE_DELIMITER = "###DEL###"; // Highly unlikely sequence
     private static final Logger LOGGER = LoggerFactory.getLogger(JavascriptEvaluator.class);
 
+    private final ConductorProperties properties;
+
+    public JavascriptEvaluator(ConductorProperties properties) {
+        this.properties = properties;
+    }
+
     @Override
     public Object evaluate(String expression, Object input) {
         LOGGER.debug("Javascript evaluator -- expression: {}", expression);
         try {
             // Evaluate the expression by using the Javascript evaluation engine.
-            expression = expression.replace(UNIQUE_DELIMITER, "\\'");
+            if (properties.isJavascriptEvaluatorReplaceUniqueDelimiterEnabled()) {
+                expression = expression.replace(UNIQUE_DELIMITER, "\\'");
+            }
             LOGGER.debug("Javascript evaluator -- expression: {}", expression);
             Object result = ScriptEvaluator.eval(expression, input);
             LOGGER.debug("Javascript evaluator -- result: {}", result);

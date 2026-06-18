@@ -52,6 +52,7 @@ import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.model.TaskModel;
 import com.netflix.conductor.model.WorkflowModel;
 import com.netflix.conductor.service.ExecutionLockService;
+import com.netflix.conductor.tracing.WorkflowExecutionTracing;
 
 import static com.netflix.conductor.core.utils.Utils.DECIDER_QUEUE;
 import static com.netflix.conductor.model.TaskModel.Status.*;
@@ -83,6 +84,7 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
     private final SystemTaskRegistry systemTaskRegistry;
     private long activeWorkerLastPollMs;
     private final ExecutionLockService executionLockService;
+    private final WorkflowExecutionTracing workflowExecutionTracing;
 
     private final Predicate<PollData> validateLastPolledTime =
             pollData ->
@@ -101,7 +103,8 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
             ExecutionLockService executionLockService,
             SystemTaskRegistry systemTaskRegistry,
             ParametersUtils parametersUtils,
-            IDGenerator idGenerator) {
+            IDGenerator idGenerator,
+            WorkflowExecutionTracing workflowExecutionTracing) {
         this.deciderService = deciderService;
         this.metadataDAO = metadataDAO;
         this.queueDAO = queueDAO;
@@ -115,6 +118,7 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
         this.parametersUtils = parametersUtils;
         this.idGenerator = idGenerator;
         this.systemTaskRegistry = systemTaskRegistry;
+        this.workflowExecutionTracing = workflowExecutionTracing;
     }
 
     /**
@@ -1058,13 +1062,19 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                 // This can happen if the workflowId is incorrect
                 return null;
             }
-            return decide(workflow);
+            return decideWithWorkflowTraceContext(workflow);
 
         } finally {
             executionLockService.releaseLock(workflowId);
             watch.stop();
             Monitors.recordWorkflowDecisionTime(watch.getTime());
         }
+    }
+
+    private WorkflowModel decideWithWorkflowTraceContext(WorkflowModel workflow) {
+        final WorkflowModel[] result = new WorkflowModel[1];
+        workflowExecutionTracing.decide(workflow, () -> result[0] = decide(workflow));
+        return result[0];
     }
 
     /**
@@ -1430,23 +1440,28 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
     }
 
     private void addTaskToQueue(TaskModel task) {
-        // put in queue
-        String taskQueueName = QueueUtils.getQueueName(task);
-        if (task.getCallbackAfterSeconds() > 0) {
-            queueDAO.push(
-                    taskQueueName,
-                    task.getTaskId(),
-                    task.getWorkflowPriority(),
-                    task.getCallbackAfterSeconds());
-        } else {
-            queueDAO.push(taskQueueName, task.getTaskId(), task.getWorkflowPriority(), 0);
-        }
-        LOGGER.debug(
-                "Added task {} with priority {} to queue {} with call back seconds {}",
+        workflowExecutionTracing.enqueueTask(
                 task,
-                task.getWorkflowPriority(),
-                taskQueueName,
-                task.getCallbackAfterSeconds());
+                () -> {
+                    // put in queue
+                    String taskQueueName = QueueUtils.getQueueName(task);
+                    if (task.getCallbackAfterSeconds() > 0) {
+                        queueDAO.push(
+                                taskQueueName,
+                                task.getTaskId(),
+                                task.getWorkflowPriority(),
+                                task.getCallbackAfterSeconds());
+                    } else {
+                        queueDAO.push(
+                                taskQueueName, task.getTaskId(), task.getWorkflowPriority(), 0);
+                    }
+                    LOGGER.debug(
+                            "Added task {} with priority {} to queue {} with call back seconds {}",
+                            task,
+                            task.getWorkflowPriority(),
+                            taskQueueName,
+                            task.getCallbackAfterSeconds());
+                });
     }
 
     @VisibleForTesting
@@ -1926,7 +1941,12 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
         workflow.setUpdatedTime(null);
         workflow.setEvent(input.getEvent());
         workflow.setTaskToDomain(input.getTaskToDomain());
-        workflow.setVariables(workflowDefinition.getVariables());
+        Map<String, Object> workflowVariables = new HashMap<>();
+        if (workflowDefinition.getVariables() != null) {
+            workflowVariables.putAll(workflowDefinition.getVariables());
+        }
+        workflowExecutionTracing.injectTraceContext(workflowVariables);
+        workflow.setVariables(workflowVariables);
 
         if (workflowInput != null && !workflowInput.isEmpty()) {
             Map<String, Object> parsedInput =
@@ -1972,7 +1992,7 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                     workflow.getWorkflowId());
             executionDAOFacade.populateWorkflowAndTaskPayloadData(workflow);
             notifyWorkflowStatusListener(workflow, WorkflowEventType.STARTED);
-            decide(workflow);
+            decideWithWorkflowTraceContext(workflow);
         } finally {
             executionLockService.releaseLock(workflow.getWorkflowId());
         }

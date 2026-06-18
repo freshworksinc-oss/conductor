@@ -1,0 +1,51 @@
+# OpenTelemetry Collector for local Conductor + Jaeger.
+# Conductor (host) exports OTLP HTTP (e.g. localhost:4329) → this collector → Jaeger.
+#
+# Filters (see docs/documentation/observability/tracing.md#background-noise):
+#
+# 1) drop_orphan_jdbc_roots (enabled)
+#    Drops root CLIENT spans with db.system — stray JDBC polls with no HTTP parent.
+#
+# 2) drop_reconciler_scheduler_roots (enabled for local compose)
+#    Drops agent spans for WorkflowReconciler.pollAndSweep (~every 500ms). Restart collector
+#    after editing: docker compose ... restart otel-collector
+#    v1 manual workflow.decide spans use _trace_context and stay under workflow.start traces.
+#    Also set otel.instrumentation.spring-scheduling.enabled=false on the JVM (see
+#    docker/observability/conductor-local-otel.properties) so these spans are not created.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  filter/drop_orphan_jdbc_roots:
+    error_mode: ignore
+    traces:
+      span:
+        - 'IsRootSpan() and kind.string == "Client" and attributes["db.system"] != nil'
+
+  filter/drop_reconciler_scheduler_roots:
+    error_mode: ignore
+    traces:
+      span:
+        # OTTL IsMatch (not name.contains) — invalid OTTL can prevent the collector from starting.
+        - 'IsMatch(name, ".*WorkflowReconciler\\.pollAndSweep.*")'
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors:
+        - filter/drop_orphan_jdbc_roots
+        - filter/drop_reconciler_scheduler_roots
+      exporters: [otlp/jaeger]

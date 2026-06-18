@@ -106,6 +106,13 @@
       "type": "java.lang.String",
       "description": "The implementation of the workflow execution lock to be used.",
       "defaultValue": "noop_lock"
+    },
+    {
+      "name": "conductor.tracing.manual.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Enables manual OpenTelemetry tracing for the workflow start flow (workflow.start, workflow.decide, workflow.enqueue_decider, task.enqueue) and W3C context in workflow variables. Requires the OpenTelemetry Java agent with -Dotel.javaagent.experimental.sdk.enabled=true.",
+      "sourceType": "com.netflix.conductor.tracing.TracingConfiguration",
+      "defaultValue": false
     }
   ],
   "hints": [

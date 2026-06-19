@@ -64,6 +64,7 @@ RUN mkdir -p /app/config /app/logs /app/libs
 COPY docker/server/bin /app
 COPY docker/server/config /app/config
 COPY --from=builder /conductor/server/build/libs/*boot*.jar /app/libs/conductor-server.jar
+COPY --from=builder /conductor/server/build/libs/opentelemetry-javaagent.jar /app/libs/opentelemetry-javaagent.jar
 
 # Copy compiled UI assets to nginx www directory
 WORKDIR /usr/share/nginx/html

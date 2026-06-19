@@ -45,6 +45,8 @@ dependencies {
 
     implementation "io.micrometer:micrometer-core:${revMicrometer}"
     implementation "com.google.guava:guava:${revGuava}"
+    // API only; export via OpenTelemetry Java agent (see docs/documentation/observability/tracing.md)
+    implementation "io.opentelemetry:opentelemetry-api:${revOpenTelemetryApi}"
 
     //gralVm dependencies for executing python
     implementation("org.graalvm.polyglot:polyglot:24.1.0")

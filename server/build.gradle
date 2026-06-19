@@ -95,6 +95,22 @@ dependencies {
     testImplementation "io.grpc:grpc-stub:${revGrpc}"
 }
 
+configurations {
+    otelJAR
+}
+
+dependencies {
+    otelJAR "io.opentelemetry.javaagent:opentelemetry-javaagent:${revOpenTelemetryJavaagent}"
+}
+
+task downloadOTELJAR(type: Copy) {
+    from configurations.otelJAR
+    into 'build/libs'
+    rename { 'opentelemetry-javaagent.jar' }
+}
+
+build.dependsOn downloadOTELJAR
+
 jar {
     enabled = true
 }

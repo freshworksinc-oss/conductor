@@ -39,6 +39,7 @@ dependencies {
     implementation project(':conductor-postgres-persistence')
     implementation project(':conductor-mysql-persistence')
     implementation project(':conductor-sqlite-persistence')
+    implementation("io.pyroscope:agent:0.14.0")
 
     // Indexing backend selection (build-time) to avoid Lucene conflicts between ES and OS
     def indexingBackend = project.findProperty('indexingBackend') ?: 'elasticsearch'
@@ -79,6 +80,9 @@ dependencies {
     }
 
     implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${revSpringDoc}"
+
+    //Continuous profiling
+    implementation "io.pyroscope:agent:${revPyroscope}"
 
 
     runtimeOnly "org.glassfish.jaxb:jaxb-runtime:${revJAXB}"

@@ -148,6 +148,12 @@ public class ConductorProperties {
     private boolean ownerEmailMandatory = true;
 
     /**
+     * Used to control whether the javascript evaluator replaces the unique delimiter ({@code
+     * ###DEL###}) with an escaped single quote before evaluating an expression.
+     */
+    private boolean javascriptEvaluatorReplaceUniqueDelimiterEnabled = false;
+
+    /**
      * The number of threads to be usde in Scheduler used for polling events from multiple event
      * queues. By default, a thread count equal to the number of CPU cores is chosen.
      */
@@ -388,6 +394,16 @@ public class ConductorProperties {
 
     public void setAsyncIndexingEnabled(boolean asyncIndexingEnabled) {
         this.asyncIndexingEnabled = asyncIndexingEnabled;
+    }
+
+    public boolean isJavascriptEvaluatorReplaceUniqueDelimiterEnabled() {
+        return javascriptEvaluatorReplaceUniqueDelimiterEnabled;
+    }
+
+    public void setJavascriptEvaluatorReplaceUniqueDelimiterEnabled(
+            boolean javascriptEvaluatorReplaceUniqueDelimiterEnabled) {
+        this.javascriptEvaluatorReplaceUniqueDelimiterEnabled =
+                javascriptEvaluatorReplaceUniqueDelimiterEnabled;
     }
 
     public int getSystemTaskWorkerThreadCount() {

@@ -232,7 +232,6 @@ public class MetadataResourceTest {
         verify(mockMetadataService, times(1)).searchWorkflowDefsLatestVersions(0, 50);
     }
 
-
     @Test
     public void testGetAllWorkflowDefLatestVersionsWithFilter() {
         WorkflowDef workflowDef = new WorkflowDef();

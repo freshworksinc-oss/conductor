@@ -68,4 +68,7 @@ ext {
     revStan = '2.2.3'
     revFlyway = '10.15.2'
     revConductorClient = '4.0.10'
+    revOpenTelemetryApi = '1.43.0'
+    revOpenTelemetryJavaagent = '2.14.0'
+    revPyroscope = '0.14.0'
 }

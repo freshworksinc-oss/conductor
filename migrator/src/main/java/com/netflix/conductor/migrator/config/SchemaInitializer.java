@@ -12,6 +12,8 @@
  */
 package com.netflix.conductor.migrator.config;
 
+import java.util.Map;
+
 import javax.sql.DataSource;
 
 import org.flywaydb.core.Flyway;
@@ -46,7 +48,12 @@ public class SchemaInitializer {
         String schema = props.getDestDatasource().getSchema();
         log.info("Initializing destination schema via Flyway (schema={})", schema);
         Flyway flyway =
+                // flyway.postgresql.transactional.lock=false: some migrations (V9, V14) use
+                // CREATE INDEX CONCURRENTLY, which cannot run while Flyway holds its default
+                // transactional lock — it self-deadlocks. Conductor's own PostgresConfiguration
+                // sets the same flag for this reason; mirror it so the migrations complete.
                 Flyway.configure()
+                        .configuration(Map.of("flyway.postgresql.transactional.lock", "false"))
                         .dataSource(destDataSource)
                         .schemas(schema)
                         .locations(

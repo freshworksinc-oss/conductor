@@ -135,8 +135,23 @@ public class SyncRunner {
         }
 
         Set<String> roots = new LinkedHashSet<>();
+        int skipped = 0;
         for (String id : ids) {
-            roots.add(treeResolver.findRootId(id));
+            try {
+                roots.add(treeResolver.findRootId(id));
+            } catch (RuntimeException e) {
+                // A single unresolvable id (e.g. the search index returns an archived/removed
+                // workflow that GET /workflow/{id} 404s) must not abort the whole pass — skip it
+                // and keep syncing the rest.
+                skipped++;
+                log.warn("Skipping id {} during root enumeration: {}", id, e.getMessage());
+            }
+        }
+        if (skipped > 0) {
+            log.warn(
+                    "Root enumeration skipped {} of {} enumerated id(s) (unresolvable on source)",
+                    skipped,
+                    ids.size());
         }
         return roots;
     }

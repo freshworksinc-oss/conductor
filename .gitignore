@@ -4,6 +4,9 @@
 dump.rdb
 out
 bin
+# The bare `bin` rule above (Eclipse output) also matches docker/migrator/bin — keep it tracked.
+!docker/migrator/bin/
+!docker/migrator/bin/startup.sh
 target
 buildscan.log
 /docs/site

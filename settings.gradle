@@ -78,5 +78,8 @@ include 'kafka-event-queue'
 
 include 'test-harness'
 
+// temporary app-level migrator service (see app-level-migration-plan.md)
+include 'migrator'
+
 rootProject.children.each {it.name="conductor-${it.name}"}
 

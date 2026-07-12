@@ -1,0 +1,48 @@
+// Temporary app-level migrator service.
+// Embeds Conductor's own persistence layer to write execution state into the
+// destination Postgres, and talks to both clusters over REST.
+// See app-level-migration-plan.md and /Users/.../plans for the design.
+
+apply plugin: 'org.springframework.boot'
+
+dependencies {
+    // Conductor modules embedded as libraries (D2: never hand-write SQL).
+    implementation project(':conductor-core')
+    implementation project(':conductor-postgres-persistence')
+    implementation project(':conductor-common')
+
+    implementation 'org.springframework.boot:spring-boot-starter'
+    // WebClient for the source/destination REST calls + a reactive server for the /health probe.
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+    // Actuator /health for k8s liveness/readiness probes.
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // DataSource / HikariCP for the embedded destination DAO.
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    // spring-retry is compileOnly upstream, so it must be declared explicitly here.
+    implementation 'org.springframework.retry:spring-retry'
+    implementation 'org.postgresql:postgresql'
+    implementation 'org.apache.commons:commons-lang3'
+    // Flyway for the optional dest schema-init (SchemaInitializer); not exposed transitively.
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    // Logging: mirror the server — use log4j2 with the SLF4J 2.x binding.
+    implementation 'org.springframework.boot:spring-boot-starter-log4j2'
+}
+
+configurations.all {
+    // The root build force-adds log4j-slf4j-impl (SLF4J 1.7.x binding) to every module, which
+    // conflicts with Spring Boot 3.3's SLF4J 2.x and leaves our loggers as no-ops. Drop it; the
+    // log4j2 starter provides the correct log4j-slf4j2-impl binding.
+    exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
+}
+
+// The root build disables bootJar for all subprojects; re-enable it for this runnable app.
+bootJar {
+    enabled = true
+    mainClass = 'com.netflix.conductor.migrator.MigratorApplication'
+}
+
+jar {
+    enabled = true
+}

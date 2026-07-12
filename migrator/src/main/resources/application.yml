@@ -1,0 +1,76 @@
+# Temporary app-level migrator service configuration.
+# Run (config-driven, e.g. k8s):  java -jar conductor-migrator.jar        (uses migrator.mode)
+#  or (CLI):                       java -jar conductor-migrator.jar --sync
+
+spring:
+  main:
+    banner-mode: "off"
+  # The destination schema is owned by the destination Conductor. Spring Boot's Flyway
+  # auto-configuration stays OFF (flyway-core is transitively present). Schema creation, when
+  # needed, is done explicitly by SchemaInitializer (migrator.dest-datasource.init-schema=true),
+  # not by this auto-config.
+  flyway:
+    enabled: false
+
+# A reactive server runs only to serve the /health probe (WebClient is otherwise client-only).
+server:
+  port: 8080
+management:
+  # We only want /health. Disable all micrometer meter-registry exporters — conductor-core drags in
+  # registries (e.g. datadog) that otherwise fail context startup demanding an API key.
+  defaults:
+    metrics:
+      export:
+        enabled: false
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true   # exposes /actuator/health/liveness and /readiness
+
+migrator:
+  # Operations to run when no CLI flag is passed (k8s auto-start). Values: metadata, sync.
+  mode: []          # e.g. [metadata, sync] — set in the container/k8s config.properties
+  source:
+    url: http://localhost:8080
+    auth-header: ""
+  dest:
+    url: http://localhost:8081
+    auth-header: ""
+  dest-datasource:
+    url: jdbc:postgresql://127.0.0.1:55433/conductor
+    username: conductor
+    password: conductor
+    schema: public
+    # When true, run Flyway (postgres-persistence migrations) against the dest DB before migrating,
+    # so the dest Conductor need not have run first. Off by default.
+    init-schema: false
+  batch-size: 10
+  payload-enabled: false
+  metadata:
+    # How definitions (task/workflow defs, event handlers) are written to the destination:
+    #   rest → via the dest Conductor's REST API (default; cache-consistent on a live server)
+    #   jdbc → directly into the meta_* tables via the embedded DAO (uniform with execution
+    #          writes; a running dest server sees new task defs only after its ≤60s cache refresh,
+    #          so prefer this for an up-front bulk load before the dest serves traffic)
+    writer: rest
+  sync:
+    # --sync mode: seconds between delta-sync passes. Each pass re-enumerates the source's
+    # non-terminal workflows and re-imports changed trees, keeping the dest copies DORMANT
+    # (no bootstrap — the source stays authoritative until the flip).
+    interval-seconds: 15
+
+# The embedded PostgresIndexDAO binds a few of these; the destination schema is owned by the
+# destination Conductor, so the migrator must never run Flyway.
+conductor:
+  postgres:
+    apply-data-migrations: false
+    only-index-on-status-change: false
+    schema: public
+
+logging:
+  level:
+    com.netflix.conductor.migrator: INFO

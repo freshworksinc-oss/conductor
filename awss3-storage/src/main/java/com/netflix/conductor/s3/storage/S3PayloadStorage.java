@@ -55,6 +55,7 @@ public class S3PayloadStorage implements ExternalPayloadStorage {
     private final S3Presigner s3Presigner;
     private final String bucketName;
     private final long expirationSec;
+    private final String prefix;
 
     public S3PayloadStorage(
             IDGenerator idGenerator,
@@ -66,6 +67,21 @@ public class S3PayloadStorage implements ExternalPayloadStorage {
         this.s3Presigner = s3Presigner;
         this.bucketName = properties.getBucketName();
         this.expirationSec = properties.getSignedUrlExpirationDuration().getSeconds();
+        this.prefix = normalizePrefix(properties.getPrefix());
+    }
+
+    /**
+     * Normalizes the configured prefix to either empty or a single trailing-slash-terminated
+     * segment with no leading slash (e.g. "sip" and "/sip/" both become "sip/").
+     */
+    private static String normalizePrefix(String configuredPrefix) {
+        if (StringUtils.isBlank(configuredPrefix)) {
+            return "";
+        }
+        String trimmed = configuredPrefix.trim();
+        trimmed = StringUtils.stripStart(trimmed, "/");
+        trimmed = StringUtils.stripEnd(trimmed, "/");
+        return trimmed.isEmpty() ? "" : trimmed + "/";
     }
 
     /**
@@ -191,6 +207,7 @@ public class S3PayloadStorage implements ExternalPayloadStorage {
 
     private String getObjectKey(PayloadType payloadType) {
         StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append(prefix);
         switch (payloadType) {
             case WORKFLOW_INPUT:
                 stringBuilder.append("workflow/input/");

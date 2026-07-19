@@ -178,12 +178,38 @@ public class MigratorProperties {
         private List<String> statuses =
                 List.of("COMPLETED", "FAILED", "TERMINATED", "TIMED_OUT");
 
+        /**
+         * When true, walk the {@code search.start-time-from-ms}..{@code -to-ms} range (default 0..now)
+         * in {@code window-days} slices, adaptively subdividing any slice that would exceed
+         * OpenSearch's 10k max_result_window — so a large history migrates in one run.
+         */
+        private boolean autoChunk = false;
+
+        /** Initial time-slice size (days) for auto-chunk; halved automatically when a slice caps. */
+        private int windowDays = 7;
+
         public List<String> getStatuses() {
             return statuses;
         }
 
         public void setStatuses(List<String> statuses) {
             this.statuses = statuses;
+        }
+
+        public boolean isAutoChunk() {
+            return autoChunk;
+        }
+
+        public void setAutoChunk(boolean autoChunk) {
+            this.autoChunk = autoChunk;
+        }
+
+        public int getWindowDays() {
+            return windowDays;
+        }
+
+        public void setWindowDays(int windowDays) {
+            this.windowDays = windowDays;
         }
     }
 

@@ -76,6 +76,11 @@ migrator:
       - FAILED
       - TERMINATED
       - TIMED_OUT
+    # auto-chunk: walk search.start-time-from-ms..-to-ms (default 0..now) in window-days slices,
+    # halving any slice that would exceed OpenSearch's 10k window — migrates a large history in one
+    # run. Best run as its own job (mode=history) for big back-fills.
+    auto-chunk: false
+    window-days: 7
   search:
     # Scoping applied to the source /api/workflow/search enumeration (sync + history).
     free-text: "*"            # some backends (OpenSearch proxy) return nothing without this

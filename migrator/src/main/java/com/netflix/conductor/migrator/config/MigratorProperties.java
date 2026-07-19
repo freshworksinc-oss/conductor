@@ -57,6 +57,9 @@ public class MigratorProperties {
     /** Continuous delta-sync settings (--sync mode). */
     private Sync sync = new Sync();
 
+    /** One-shot terminal-history back-fill settings (--history / mode=history). */
+    private History history = new History();
+
     public Endpoint getSource() {
         return source;
     }
@@ -113,6 +116,14 @@ public class MigratorProperties {
         this.sync = sync;
     }
 
+    public History getHistory() {
+        return history;
+    }
+
+    public void setHistory(History history) {
+        this.history = history;
+    }
+
     /** Metadata write-channel selection. */
     public static class Metadata {
         /**
@@ -143,6 +154,25 @@ public class MigratorProperties {
 
         public void setIntervalSeconds(int intervalSeconds) {
             this.intervalSeconds = intervalSeconds;
+        }
+    }
+
+    /** One-shot terminal-history back-fill (--history / mode=history). */
+    public static class History {
+        /**
+         * Workflow statuses to enumerate and back-fill in history mode. Terminal statuses by
+         * default. Comma-separated in properties, e.g. {@code
+         * migrator.history.statuses=COMPLETED,FAILED,TERMINATED,TIMED_OUT}.
+         */
+        private List<String> statuses =
+                List.of("COMPLETED", "FAILED", "TERMINATED", "TIMED_OUT");
+
+        public List<String> getStatuses() {
+            return statuses;
+        }
+
+        public void setStatuses(List<String> statuses) {
+            this.statuses = statuses;
         }
     }
 

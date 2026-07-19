@@ -34,6 +34,8 @@ import com.netflix.conductor.migrator.sync.SyncRunner;
  *   --metadata          copy definitions (task defs, workflow defs, event handlers) source → dest
  *   --ids=wf1,wf2,wf3   migrate these specific root workflow ids (import + bootstrap, then exit)
  *   --search            enumerate non-terminal (RUNNING/PAUSED) ids from the source (up to batchSize)
+ *   --history           one-shot back-fill of TERMINAL executions (migrator.history.statuses),
+ *                       paginated, dormant, no bootstrap; then exit (unless combined with --sync)
  *   --sync              continuous delta-sync loop: keep dormant dest copies current (no bootstrap),
  *                       re-enumerating the source each pass; runs until stopped
  * </pre>
@@ -56,6 +58,7 @@ public class MigrationCommand implements ApplicationRunner {
 
     private final MigrationRunner runner;
     private final MetadataMigrator metadataMigrator;
+    private final HistoryMigrator historyMigrator;
     private final SyncRunner syncRunner;
     private final SchemaInitializer schemaInitializer;
     private final SourceClient source;
@@ -64,12 +67,14 @@ public class MigrationCommand implements ApplicationRunner {
     public MigrationCommand(
             MigrationRunner runner,
             MetadataMigrator metadataMigrator,
+            HistoryMigrator historyMigrator,
             SyncRunner syncRunner,
             SchemaInitializer schemaInitializer,
             SourceClient source,
             MigratorProperties props) {
         this.runner = runner;
         this.metadataMigrator = metadataMigrator;
+        this.historyMigrator = historyMigrator;
         this.syncRunner = syncRunner;
         this.schemaInitializer = schemaInitializer;
         this.source = source;
@@ -86,20 +91,23 @@ public class MigrationCommand implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         boolean flagMetadata = args.containsOption("metadata");
+        boolean flagHistory = args.containsOption("history");
         boolean flagSync = args.containsOption("sync");
         boolean doExecutions = args.containsOption("ids") || args.containsOption("search");
 
         // If no operation flag is given, fall back to config-driven mode (migrator.mode) — this is
         // how the k8s pod runs: plain `java -jar`, operations chosen entirely by config.
-        boolean anyFlag = flagMetadata || flagSync || doExecutions;
+        boolean anyFlag = flagMetadata || flagHistory || flagSync || doExecutions;
         List<String> mode = props.getMode();
         boolean doMetadata = flagMetadata || (!anyFlag && mode.contains("metadata"));
+        boolean doHistory = flagHistory || (!anyFlag && mode.contains("history"));
         boolean doSync = flagSync || (!anyFlag && mode.contains("sync"));
 
-        if (!doMetadata && !doSync && !doExecutions) {
+        if (!doMetadata && !doHistory && !doSync && !doExecutions) {
             log.error(
                     "Nothing to do. Set migrator.mode (e.g. metadata,sync) or pass --metadata,"
-                            + " --sync, --ids=wf1,wf2 / --search. See MigrationCommand docs.");
+                            + " --history, --sync, --ids=wf1,wf2 / --search. See MigrationCommand"
+                            + " docs.");
             return;
         }
 
@@ -110,6 +118,15 @@ public class MigrationCommand implements ApplicationRunner {
         if (doMetadata) {
             log.info("Migrating definitions (source → dest)");
             metadataMigrator.migrate();
+        }
+
+        // Terminal-history back-fill (one-shot): import terminal executions before starting the
+        // continuous non-terminal sync. Terminal + non-terminal are disjoint sets. NOTE: for very
+        // large histories run this as its own job (mode=history alone) so it doesn't delay a sync
+        // pod's readiness.
+        if (doHistory) {
+            log.info("Back-filling terminal history (source → dest)");
+            historyMigrator.migrate();
         }
 
         // Continuous delta-sync: run the loop on its own (non-daemon) thread so this

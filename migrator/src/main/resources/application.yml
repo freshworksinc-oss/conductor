@@ -62,6 +62,15 @@ migrator:
     # non-terminal workflows and re-imports changed trees, keeping the dest copies DORMANT
     # (no bootstrap — the source stays authoritative until the flip).
     interval-seconds: 15
+  history:
+    # --history / mode=history: one-shot back-fill of TERMINAL executions. Enumerates these
+    # statuses (paginated), imports each tree dormant (no bootstrap), skips archived ids that 404.
+    # Writes Postgres index tables only — OpenSearch-backed dests still need an OS→OS reindex.
+    statuses:
+      - COMPLETED
+      - FAILED
+      - TERMINATED
+      - TIMED_OUT
 
 # The embedded PostgresIndexDAO binds a few of these; the destination schema is owned by the
 # destination Conductor, so the migrator must never run Flyway.

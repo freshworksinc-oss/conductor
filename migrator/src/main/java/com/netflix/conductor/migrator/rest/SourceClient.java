@@ -64,6 +64,15 @@ public class SourceClient {
 
     /** Enumerate non-terminal (RUNNING/PAUSED) workflow ids via the search index. */
     public List<String> searchNonTerminalIds(int start, int size) {
+        return searchIds("status IN (RUNNING,PAUSED)", start, size);
+    }
+
+    /**
+     * Enumerate workflow ids matching an arbitrary Conductor search query (one page). Used by
+     * history mode to enumerate terminal statuses; the query is passed through to
+     * {@code /api/workflow/search}.
+     */
+    public List<String> searchIds(String query, int start, int size) {
         String json =
                 client.get()
                         .uri(
@@ -72,7 +81,7 @@ public class SourceClient {
                                                 .path("/api/workflow/search")
                                                 .queryParam("start", start)
                                                 .queryParam("size", size)
-                                                .queryParam("query", "status IN (RUNNING,PAUSED)")
+                                                .queryParam("query", query)
                                                 .build())
                         .retrieve()
                         .bodyToMono(String.class)

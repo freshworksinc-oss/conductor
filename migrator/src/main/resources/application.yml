@@ -35,8 +35,13 @@ migrator:
   # Operations to run when no CLI flag is passed (k8s auto-start). Values: metadata, sync.
   mode: []          # e.g. [metadata, sync] — set in the container/k8s config.properties
   source:
+    # Point at the edge/auth-proxy to have tenant scoping + OpenSearch query formatting handled
+    # for you (send tenant-id below); or a conductor-core service for direct/unscoped access.
     url: http://localhost:8080
     auth-header: ""
+    # Sent as the x-tenant-id header on every source request. Required via the edge/auth-proxy —
+    # it uses this to tenant-scope search, metadata listing and workflow access.
+    tenant-id: ""
   dest:
     url: http://localhost:8081
     auth-header: ""
@@ -71,6 +76,17 @@ migrator:
       - FAILED
       - TERMINATED
       - TIMED_OUT
+  search:
+    # Scoping applied to the source /api/workflow/search enumeration (sync + history).
+    free-text: "*"            # some backends (OpenSearch proxy) return nothing without this
+    sort: "startTime:DESC"
+    # Set false when 'status IN (...)' doesn't translate on the backend (e.g. sip's OpenSearch
+    # proxy) — then enumerate purely by the startTime window below.
+    status-filter: true
+    # Datetime window (epoch millis). from-ms>0 → startTime>from; to-ms>0 → startTime<to.
+    # Use the window to bound history and to chunk under OpenSearch's 10k max_result_window.
+    start-time-from-ms: 0
+    start-time-to-ms: 0
 
 # The embedded PostgresIndexDAO binds a few of these; the destination schema is owned by the
 # destination Conductor, so the migrator must never run Flyway.

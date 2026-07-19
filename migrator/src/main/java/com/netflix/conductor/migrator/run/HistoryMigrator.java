@@ -74,13 +74,20 @@ public class HistoryMigrator {
         this.props = props;
     }
 
+    // OpenSearch default max_result_window — start+size beyond this is rejected by the backend,
+    // so deep pagination can't reach past it. Narrow migrator.search.start-time-{from,to}-ms to
+    // chunk a large history into windows under this limit.
+    private static final int MAX_RESULT_WINDOW = 10_000;
+
     public void migrate() {
         List<String> statuses = props.getHistory().getStatuses();
-        if (statuses == null || statuses.isEmpty()) {
-            log.warn("History mode: no migrator.history.statuses configured; nothing to do.");
+        boolean statusFilter = props.getSearch().isStatusFilter();
+        String base = statusFilter ? "status IN (" + String.join(",", statuses) + ")" : "";
+        if (statusFilter && (statuses == null || statuses.isEmpty())) {
+            log.warn("History mode: status-filter on but no migrator.history.statuses; nothing.");
             return;
         }
-        String query = "status IN (" + String.join(",", statuses) + ")";
+        String query = source.scopedQuery(base);
         int pageSize = props.getBatchSize();
         log.info("History back-fill starting: query [{}], pageSize {}", query, pageSize);
 
@@ -94,6 +101,15 @@ public class HistoryMigrator {
                 break;
             }
             start += pageSize;
+            if (start + pageSize > MAX_RESULT_WINDOW) {
+                log.warn(
+                        "History enumeration hit OpenSearch max_result_window ({}). Stopping at {}"
+                            + " ids — narrow migrator.search.start-time-from-ms/-to-ms to chunk the"
+                            + " range and re-run to cover the rest.",
+                        MAX_RESULT_WINDOW,
+                        ids.size());
+                break;
+            }
             if (ids.size() % (pageSize * 20) == 0) {
                 log.info("History enumeration: {} ids so far...", ids.size());
             }

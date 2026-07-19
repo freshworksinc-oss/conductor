@@ -40,10 +40,12 @@ public class SourceClient {
 
     private final WebClient client;
     private final ObjectMapper mapper;
+    private final MigratorProperties props;
 
     public SourceClient(MigratorProperties props, ObjectMapper mapper) {
         this.client = ConductorWebClient.forEndpoint(props.getSource());
         this.mapper = mapper;
+        this.props = props;
     }
 
     /** Full workflow export including tasks, parentWorkflowId and the workflowDefinition. */
@@ -62,17 +64,40 @@ public class SourceClient {
         return readValue(json, Workflow.class);
     }
 
-    /** Enumerate non-terminal (RUNNING/PAUSED) workflow ids via the search index. */
+    /** Enumerate non-terminal (RUNNING/PAUSED) workflow ids, scoped per migrator.search. */
     public List<String> searchNonTerminalIds(int start, int size) {
-        return searchIds("status IN (RUNNING,PAUSED)", start, size);
+        String base = props.getSearch().isStatusFilter() ? "status IN (RUNNING,PAUSED)" : "";
+        return searchIds(scopedQuery(base), start, size);
     }
 
     /**
-     * Enumerate workflow ids matching an arbitrary Conductor search query (one page). Used by
-     * history mode to enumerate terminal statuses; the query is passed through to
-     * {@code /api/workflow/search}.
+     * Compose the {@code query} value from a base status clause plus the configured {@code
+     * startTime} window. Tenant scoping is NOT added here — when going through the edge/auth-proxy
+     * the {@code x-tenant-id} header makes the proxy append the {@code correlationId} scope itself.
+     * Any part may be empty; an all-empty query relies on {@code freeText} to match everything.
+     */
+    public String scopedQuery(String base) {
+        MigratorProperties.Search s = props.getSearch();
+        java.util.List<String> clauses = new java.util.ArrayList<>();
+        if (base != null && !base.isBlank()) {
+            clauses.add(base);
+        }
+        if (s.getStartTimeFromMs() > 0) {
+            clauses.add("startTime > " + s.getStartTimeFromMs());
+        }
+        if (s.getStartTimeToMs() > 0) {
+            clauses.add("startTime < " + s.getStartTimeToMs());
+        }
+        return String.join(" AND ", clauses);
+    }
+
+    /**
+     * Enumerate workflow ids matching a Conductor search query (one page). Adds {@code freeText}
+     * and {@code sort} from migrator.search — some backends (OpenSearch proxy) return nothing
+     * without {@code freeText=*}.
      */
     public List<String> searchIds(String query, int start, int size) {
+        MigratorProperties.Search s = props.getSearch();
         String json =
                 client.get()
                         .uri(
@@ -81,6 +106,8 @@ public class SourceClient {
                                                 .path("/api/workflow/search")
                                                 .queryParam("start", start)
                                                 .queryParam("size", size)
+                                                .queryParam("freeText", s.getFreeText())
+                                                .queryParam("sort", s.getSort())
                                                 .queryParam("query", query)
                                                 .build())
                         .retrieve()

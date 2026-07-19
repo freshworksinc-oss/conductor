@@ -22,7 +22,9 @@ import com.netflix.conductor.migrator.config.MigratorProperties;
  * Builds a plain {@link WebClient} for a Conductor endpoint. We deliberately transfer bodies as raw
  * JSON strings and (de)serialize with the shared Conductor-parity {@code ObjectMapper} in the
  * clients, rather than relying on WebClient's Jackson codec — the codec does not reliably register
- * for the common model types inside the shaded boot jar. Adds the optional Authorization header.
+ * for the common model types inside the shaded boot jar. Adds the optional Authorization header and
+ * (when set) the {@code x-tenant-id} header — required when going through the edge/auth-proxy, which
+ * uses it to tenant-scope search, metadata listing and workflow access.
  */
 public final class ConductorWebClient {
 
@@ -37,6 +39,9 @@ public final class ConductorWebClient {
 
         if (StringUtils.hasText(endpoint.getAuthHeader())) {
             builder.defaultHeader(HttpHeaders.AUTHORIZATION, endpoint.getAuthHeader());
+        }
+        if (StringUtils.hasText(endpoint.getTenantId())) {
+            builder.defaultHeader("x-tenant-id", endpoint.getTenantId());
         }
         return builder.build();
     }

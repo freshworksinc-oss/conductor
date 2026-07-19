@@ -60,6 +60,9 @@ public class MigratorProperties {
     /** One-shot terminal-history back-fill settings (--history / mode=history). */
     private History history = new History();
 
+    /** Source search scoping applied to enumeration (freeText, time window, tenant, status). */
+    private Search search = new Search();
+
     public Endpoint getSource() {
         return source;
     }
@@ -124,6 +127,14 @@ public class MigratorProperties {
         this.history = history;
     }
 
+    public Search getSearch() {
+        return search;
+    }
+
+    public void setSearch(Search search) {
+        this.search = search;
+    }
+
     /** Metadata write-channel selection. */
     public static class Metadata {
         /**
@@ -176,10 +187,80 @@ public class MigratorProperties {
         }
     }
 
-    /** A Conductor REST endpoint plus an optional pre-formed Authorization header value. */
+    /**
+     * Scoping applied to the source {@code /api/workflow/search} enumeration. Some backends (sip's
+     * OpenSearch proxy) return nothing for {@code status IN (...)} but work with a {@code startTime}
+     * range + {@code freeText=*} — hence these are all tunable.
+     */
+    public static class Search {
+        /** {@code freeText} query param; {@code *} matches all. Some backends need it set. */
+        private String freeText = "*";
+
+        /** {@code sort} query param (e.g. {@code startTime:DESC}). */
+        private String sort = "startTime:DESC";
+
+        /**
+         * When true, include the per-mode {@code status IN (...)} clause. Set false for backends
+         * where status filtering doesn't translate (then enumerate by time window only).
+         */
+        private boolean statusFilter = true;
+
+        /** If &gt; 0, restrict to {@code startTime > this} (epoch ms). */
+        private long startTimeFromMs = 0;
+
+        /** If &gt; 0, restrict to {@code startTime < this} (epoch ms) — use to chunk large ranges. */
+        private long startTimeToMs = 0;
+
+        public String getFreeText() {
+            return freeText;
+        }
+
+        public void setFreeText(String freeText) {
+            this.freeText = freeText;
+        }
+
+        public String getSort() {
+            return sort;
+        }
+
+        public void setSort(String sort) {
+            this.sort = sort;
+        }
+
+        public boolean isStatusFilter() {
+            return statusFilter;
+        }
+
+        public void setStatusFilter(boolean statusFilter) {
+            this.statusFilter = statusFilter;
+        }
+
+        public long getStartTimeFromMs() {
+            return startTimeFromMs;
+        }
+
+        public void setStartTimeFromMs(long startTimeFromMs) {
+            this.startTimeFromMs = startTimeFromMs;
+        }
+
+        public long getStartTimeToMs() {
+            return startTimeToMs;
+        }
+
+        public void setStartTimeToMs(long startTimeToMs) {
+            this.startTimeToMs = startTimeToMs;
+        }
+    }
+
+    /**
+     * A Conductor REST endpoint plus optional headers. {@code authHeader} is sent as
+     * Authorization; {@code tenantId} is sent as {@code x-tenant-id} — required when the endpoint
+     * is the edge/auth-proxy, which uses it to tenant-scope search/metadata/access.
+     */
     public static class Endpoint {
         private String url;
         private String authHeader = "";
+        private String tenantId = "";
 
         public String getUrl() {
             return url;
@@ -195,6 +276,14 @@ public class MigratorProperties {
 
         public void setAuthHeader(String authHeader) {
             this.authHeader = authHeader;
+        }
+
+        public String getTenantId() {
+            return tenantId;
+        }
+
+        public void setTenantId(String tenantId) {
+            this.tenantId = tenantId;
         }
     }
 

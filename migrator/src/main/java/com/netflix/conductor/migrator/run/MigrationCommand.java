@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -63,6 +64,8 @@ public class MigrationCommand implements ApplicationRunner {
     private final SchemaInitializer schemaInitializer;
     private final SourceClient source;
     private final MigratorProperties props;
+    // Present only when migrator.poll-data.enabled=true (bean is conditional).
+    private final ObjectProvider<PollDataMigrator> pollDataMigrator;
 
     public MigrationCommand(
             MigrationRunner runner,
@@ -71,7 +74,8 @@ public class MigrationCommand implements ApplicationRunner {
             SyncRunner syncRunner,
             SchemaInitializer schemaInitializer,
             SourceClient source,
-            MigratorProperties props) {
+            MigratorProperties props,
+            ObjectProvider<PollDataMigrator> pollDataMigrator) {
         this.runner = runner;
         this.metadataMigrator = metadataMigrator;
         this.historyMigrator = historyMigrator;
@@ -79,6 +83,7 @@ public class MigrationCommand implements ApplicationRunner {
         this.schemaInitializer = schemaInitializer;
         this.source = source;
         this.props = props;
+        this.pollDataMigrator = pollDataMigrator;
     }
 
     /**
@@ -119,6 +124,13 @@ public class MigrationCommand implements ApplicationRunner {
             log.info("Migrating definitions (source → dest)");
             metadataMigrator.migrate();
         }
+
+        // Poll data (one-shot) — only when migrator.poll-data.enabled=true (bean present).
+        pollDataMigrator.ifAvailable(
+                pdm -> {
+                    log.info("Migrating poll data (source → dest)");
+                    pdm.migrate();
+                });
 
         // Terminal-history back-fill (one-shot): import terminal executions before starting the
         // continuous non-terminal sync. Terminal + non-terminal are disjoint sets. NOTE: for very

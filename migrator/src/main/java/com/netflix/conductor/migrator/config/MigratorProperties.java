@@ -63,6 +63,9 @@ public class MigratorProperties {
     /** Source search scoping applied to enumeration (freeText, time window, tenant, status). */
     private Search search = new Search();
 
+    /** Poll-data migration settings. */
+    private PollData pollData = new PollData();
+
     public Endpoint getSource() {
         return source;
     }
@@ -133,6 +136,32 @@ public class MigratorProperties {
 
     public void setSearch(Search search) {
         this.search = search;
+    }
+
+    public PollData getPollData() {
+        return pollData;
+    }
+
+    public void setPollData(PollData pollData) {
+        this.pollData = pollData;
+    }
+
+    /** Poll-data (last-poll-time per taskDefName/domain) migration. */
+    public static class PollData {
+        /**
+         * When true, copy the source's poll data to the dest (one-shot). Written via the embedded
+         * DAO's {@code updateLastPollData}, which stamps {@code lastPollTime=now} — acceptable, as
+         * poll data is transient operational metadata that workers repopulate anyway.
+         */
+        private boolean enabled = false;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
     }
 
     /** Metadata write-channel selection. */

@@ -27,6 +27,7 @@ import com.netflix.conductor.postgres.config.PostgresProperties;
 import com.netflix.conductor.postgres.dao.PostgresExecutionDAO;
 import com.netflix.conductor.postgres.dao.PostgresIndexDAO;
 import com.netflix.conductor.postgres.dao.PostgresMetadataDAO;
+import com.netflix.conductor.postgres.dao.PostgresPollDataDAO;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
@@ -111,6 +112,21 @@ public class DestPersistenceConfig {
             DataSource destDataSource,
             PostgresProperties postgresProperties) {
         return new PostgresMetadataDAO(
+                destRetryTemplate, objectMapper, destDataSource, postgresProperties);
+    }
+
+    /**
+     * Only constructed when poll-data migration is enabled. With {@code pollDataFlushInterval=0}
+     * (the default) this writes immediately and starts no background flush scheduler.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "migrator.poll-data.enabled", havingValue = "true")
+    public PostgresPollDataDAO destPollDataDao(
+            RetryTemplate destRetryTemplate,
+            ObjectMapper objectMapper,
+            DataSource destDataSource,
+            PostgresProperties postgresProperties) {
+        return new PostgresPollDataDAO(
                 destRetryTemplate, objectMapper, destDataSource, postgresProperties);
     }
 }

@@ -55,6 +55,11 @@ migrator:
     init-schema: false
   batch-size: 10
   payload-enabled: false
+  poll-data:
+    # One-shot copy of source poll_data (last-poll-time per taskDefName/domain) into the dest.
+    # Transient/self-healing (workers repopulate on the dest); lastPollTime is stamped at migration
+    # time by the DAO. Off by default.
+    enabled: false
   metadata:
     # How definitions (task/workflow defs, event handlers) are written to the destination:
     #   rest → via the dest Conductor's REST API (default; cache-consistent on a live server)

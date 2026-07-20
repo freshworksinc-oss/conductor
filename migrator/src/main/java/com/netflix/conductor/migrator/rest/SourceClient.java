@@ -20,6 +20,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import com.netflix.conductor.common.metadata.events.EventHandler;
+import com.netflix.conductor.common.metadata.tasks.PollData;
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.model.BulkResponse;
@@ -121,6 +122,18 @@ public class SourceClient {
         return result.getResults().stream()
                 .map(WorkflowSummary::getWorkflowId)
                 .collect(Collectors.toList());
+    }
+
+    /** All poll data (last-poll-time per taskDefName/domain) from the source. */
+    public List<PollData> getAllPollData() {
+        String json =
+                client.get()
+                        .uri("/api/tasks/queue/polldata/all")
+                        .retrieve()
+                        .bodyToMono(String.class)
+                        .block();
+        List<PollData> result = readValue(json, new TypeReference<List<PollData>>() {});
+        return result == null ? List.of() : result;
     }
 
     // ---- metadata (definitions) ----

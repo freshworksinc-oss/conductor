@@ -13,7 +13,9 @@
 package com.netflix.conductor.contribs.listener;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -24,9 +26,11 @@ import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.netflix.conductor.common.metadata.tasks.Task;
 import com.netflix.conductor.core.dal.ExecutionDAOFacade;
 import com.netflix.conductor.core.listener.TaskStatusListener;
 import com.netflix.conductor.model.TaskModel;
+import com.netflix.conductor.model.WorkflowModel;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -76,7 +80,12 @@ public class TaskStatusPublisher implements TaskStatusListener {
                             task.getInputData() != null
                                     ? task.getInputData().get("accountId")
                                     : null;
-                    taskNotification = new TaskNotification(task.toTask());
+                    Task taskForNotification = task.toTask();
+                    // Enrich the task input with _tenantContext read from the parent
+                    // workflow's input, so Central consumers receive tenant context on
+                    // task events as well (task input does not carry it by default).
+                    addTenantContext(task, taskForNotification);
+                    taskNotification = new TaskNotification(taskForNotification);
                     String jsonTask = taskNotification.toJsonString();
                     LOGGER.info("Publishing TaskNotification: {}", jsonTask);
                     if (taskNotification.getTaskType().equals("SUB_WORKFLOW")) {
@@ -139,6 +148,62 @@ public class TaskStatusPublisher implements TaskStatusListener {
                     task.getWorkflowInstanceId());
             LOGGER.debug(e.toString());
         }
+    }
+
+    /**
+     * Reads {@code _tenantContext} from the parent workflow's input and adds it to the task input
+     * used for the notification payload. The task's own input does not carry {@code _tenantContext}
+     * by default, so Central consumers need it copied in from the workflow. Failures here must
+     * never block publishing, so any exception is swallowed with a warning.
+     */
+    private void addTenantContext(TaskModel task, Task taskForNotification) {
+        try {
+            Object tenantContext = extractTenantContext(task);
+            if (tenantContext == null) {
+                return;
+            }
+            Map<String, Object> enrichedInput =
+                    taskForNotification.getInputData() != null
+                            ? new LinkedHashMap<>(taskForNotification.getInputData())
+                            : new LinkedHashMap<>();
+            enrichedInput.put("_tenantContext", tenantContext);
+            taskForNotification.setInputData(enrichedInput);
+        } catch (Exception e) {
+            LOGGER.warn(
+                    "Unable to add _tenantContext to task {} notification: {}",
+                    task.getTaskId(),
+                    e.getMessage());
+        }
+    }
+
+    /**
+     * Resolves {@code _tenantContext} for a task without a DB round-trip when possible. The task
+     * input usually already embeds it (either directly, or nested under the injected {@code
+     * ${workflow.input}} under the {@code workflow} key), so we reuse that first and only fetch the
+     * parent workflow as a fallback for workflows that do not pass their input into the task.
+     */
+    private Object extractTenantContext(TaskModel task) {
+        Map<String, Object> taskInput = task.getInputData();
+        if (taskInput != null) {
+            Object direct = taskInput.get("_tenantContext");
+            if (direct != null) {
+                return direct;
+            }
+            Object workflowInput = taskInput.get("workflow");
+            if (workflowInput instanceof Map) {
+                Object nested = ((Map<?, ?>) workflowInput).get("_tenantContext");
+                if (nested != null) {
+                    return nested;
+                }
+            }
+        }
+        // Fallback: the task did not carry the workflow input, so read it from the workflow.
+        WorkflowModel workflow =
+                executionDAOFacade.getWorkflowModel(task.getWorkflowInstanceId(), false);
+        if (workflow != null && workflow.getInput() != null) {
+            return workflow.getInput().get("_tenantContext");
+        }
+        return null;
     }
 
     @Override

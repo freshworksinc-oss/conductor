@@ -243,6 +243,21 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         }
     }
 
+    /**
+     * Central consumers need tenant identity as a top-level field alongside {@code correlationId}
+     * and {@code domain}, not buried inside {@code input}. Copy (rather than move) it so existing
+     * consumers reading {@code input._tenantContext} keep working.
+     */
+    private void exposeTenantContextAtRoot(ObjectNode payload) {
+        JsonNode inputNode = payload.get("input");
+        if (inputNode instanceof ObjectNode) {
+            JsonNode tenantContext = inputNode.get("_tenantContext");
+            if (tenantContext != null) {
+                payload.set("_tenantContext", tenantContext);
+            }
+        }
+    }
+
     private void publishStatusChangeNotification(
             StatusChangeNotification statusChangeNotification, Object accountId)
             throws IOException {
@@ -267,6 +282,7 @@ public class StatusChangePublisher implements WorkflowStatusListener {
             ObjectNode payloadNode = (ObjectNode) existingPayload;
             inlineJsonString(payloadNode, "input");
             inlineJsonString(payloadNode, "output");
+            exposeTenantContextAtRoot(payloadNode);
         }
 
         // Wrap in Central envelope

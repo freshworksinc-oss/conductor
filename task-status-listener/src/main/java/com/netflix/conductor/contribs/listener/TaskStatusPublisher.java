@@ -294,6 +294,21 @@ public class TaskStatusPublisher implements TaskStatusListener {
         }
     }
 
+    /**
+     * Central consumers need tenant identity as a top-level field alongside {@code correlationId}
+     * and {@code domain}, not buried inside {@code input}. Copy (rather than move) it so existing
+     * consumers reading {@code input._tenantContext} keep working.
+     */
+    private void exposeTenantContextAtRoot(ObjectNode payload) {
+        JsonNode inputNode = payload.get("input");
+        if (inputNode instanceof ObjectNode) {
+            JsonNode tenantContext = inputNode.get("_tenantContext");
+            if (tenantContext != null) {
+                payload.set("_tenantContext", tenantContext);
+            }
+        }
+    }
+
     private void publishTaskNotification(TaskNotification taskNotification, Object accountId)
             throws IOException {
         // Get the existing task JSON (with all current fields)
@@ -318,6 +333,7 @@ public class TaskStatusPublisher implements TaskStatusListener {
             ObjectNode payloadNode = (ObjectNode) existingPayload;
             inlineJsonString(payloadNode, "input");
             inlineJsonString(payloadNode, "output");
+            exposeTenantContextAtRoot(payloadNode);
         }
 
         // Wrap in Central envelope

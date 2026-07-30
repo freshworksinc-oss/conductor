@@ -269,46 +269,6 @@ public class TaskStatusPublisher implements TaskStatusListener {
         }
     }
 
-    /**
-     * The summary {@code input}/{@code output} fields are Strings that already contain serialized
-     * JSON, so they show up double-encoded (an escaped JSON string) in the payload. Central expects
-     * real nested objects, so this replaces the String node with the parsed JSON when the content
-     * is valid JSON. If it is not valid JSON (e.g. Java {@code toString()} when {@code
-     * conductor.app.summary-input-output-json-serialization.enabled=false}) the original string is
-     * kept so publishing never fails.
-     */
-    private void inlineJsonString(ObjectNode payload, String field) {
-        JsonNode value = payload.get(field);
-        if (value != null && value.isTextual()) {
-            String text = value.asText();
-            if (text != null && !text.isEmpty()) {
-                try {
-                    payload.set(field, objectMapper.readTree(text));
-                } catch (IOException e) {
-                    LOGGER.debug(
-                            "Field '{}' is not valid JSON; leaving as string for task {}",
-                            field,
-                            payload.path("taskId").asText());
-                }
-            }
-        }
-    }
-
-    /**
-     * Central consumers need tenant identity as a top-level field alongside {@code correlationId}
-     * and {@code domain}, not buried inside {@code input}. Copy (rather than move) it so existing
-     * consumers reading {@code input._tenantContext} keep working.
-     */
-    private void exposeTenantContextAtRoot(ObjectNode payload) {
-        JsonNode inputNode = payload.get("input");
-        if (inputNode instanceof ObjectNode) {
-            JsonNode tenantContext = inputNode.get("_tenantContext");
-            if (tenantContext != null) {
-                payload.set("_tenantContext", tenantContext);
-            }
-        }
-    }
-
     private void publishTaskNotification(TaskNotification taskNotification, Object accountId)
             throws IOException {
         // Get the existing task JSON (with all current fields)
@@ -331,9 +291,9 @@ public class TaskStatusPublisher implements TaskStatusListener {
         // nodes so Central receives clean nested objects it can parse in one pass.
         if (existingPayload instanceof ObjectNode) {
             ObjectNode payloadNode = (ObjectNode) existingPayload;
-            inlineJsonString(payloadNode, "input");
-            inlineJsonString(payloadNode, "output");
-            exposeTenantContextAtRoot(payloadNode);
+            CentralPayloadUtils.inlineJsonString(objectMapper, payloadNode, "input", "taskId");
+            CentralPayloadUtils.inlineJsonString(objectMapper, payloadNode, "output", "taskId");
+            CentralPayloadUtils.exposeTenantContextAtRoot(payloadNode);
         }
 
         // Wrap in Central envelope

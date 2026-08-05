@@ -24,6 +24,7 @@ import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.netflix.conductor.contribs.listener.CentralPayloadUtils;
 import com.netflix.conductor.contribs.listener.RestClientManager;
 import com.netflix.conductor.core.dal.ExecutionDAOFacade;
 import com.netflix.conductor.core.listener.WorkflowStatusListener;
@@ -234,6 +235,17 @@ public class StatusChangePublisher implements WorkflowStatusListener {
 
         // Parse existing JSON into JsonNode for wrapping
         JsonNode existingPayload = objectMapper.readTree(existingWorkflowJson);
+
+        // input/output are String fields that already hold serialized JSON, so they arrive
+        // double-encoded (an escaped JSON string, not an object). Inline them into real JSON
+        // nodes so Central receives clean nested objects it can parse in one pass.
+        if (existingPayload instanceof ObjectNode) {
+            ObjectNode payloadNode = (ObjectNode) existingPayload;
+            CentralPayloadUtils.inlineJsonString(objectMapper, payloadNode, "input", "workflowId");
+            CentralPayloadUtils.inlineJsonString(
+                    objectMapper, payloadNode, "output", "workflowId");
+            CentralPayloadUtils.exposeTenantContextAtRoot(payloadNode);
+        }
 
         // Wrap in Central envelope
         ObjectNode centralMessage = objectMapper.createObjectNode();

@@ -18,6 +18,9 @@ and executing workflows, with pluggable persistence, messaging, and task integra
 - Pyroscope continuous profiling integration
 - Operational fixes and performance work (paginated workflow definition listing, Lucene-syntax search, etc.)
 
+See [Freshworks Fork: Customizations Over Upstream](freshworks-customizations.md) for a detailed
+breakdown of each of these, including source files and configuration properties.
+
 ## Documentation
 
 The [Developer's Guide](devguide/concepts/why.md) and [Documentation](documentation/api/index.md) sections

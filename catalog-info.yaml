@@ -1,0 +1,29 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: conductor
+  namespace: cloud-engineering
+  description: >-
+    Freshworks' fork of Netflix Conductor OSS, a microservices orchestration
+    engine for distributed and asynchronous workflows. Exposes REST/gRPC APIs
+    for defining and executing workflows, with pluggable persistence,
+    messaging, and task integrations.
+  tags:
+    - java
+    - gradle
+    - workflow
+    - orchestration
+    - conductor
+    - oss
+  annotations:
+    github.com/project-slug: freshworksinc-oss/conductor
+    backstage.io/techdocs-ref: dir:.
+  labels:
+    exposure: internal
+    tier: critical
+    language: Java
+spec:
+  type: service
+  lifecycle: production
+  owner: cloud-engineering/workflow-engine
+  system: cloud-engineering/conductor-as-a-service

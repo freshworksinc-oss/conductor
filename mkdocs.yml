@@ -8,6 +8,7 @@ use_directory_urls: false
 
 nav:
   - index.md
+  - freshworks-customizations.md
   - Developer's Guide:
     - devguide/concepts/why.md 
     - Running Conductor:

@@ -3,7 +3,7 @@
 .classpath
 dump.rdb
 out
-bin
+/bin
 target
 buildscan.log
 /docs/site

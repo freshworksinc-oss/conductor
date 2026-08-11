@@ -1,0 +1,43 @@
+#
+# conductor:server - CAAS server-only image (API only; UI from docker/ui + conductor-ui Jenkins job)
+#
+# Build context: repository root (same as docker/server/Dockerfile)
+# Example:
+#   docker build --build-arg INDEXING_BACKEND=opensearch \
+#     -t conductor-oss-base:<version> -f docker/server/CAASDockerfile .
+#
+# ===========================================================================================================
+# 0. Builder stage
+# ===========================================================================================================
+FROM azul/zulu-openjdk-debian:17 AS builder
+
+ARG INDEXING_BACKEND=elasticsearch
+
+LABEL maintainer="Freshworks CAAS <search-team@freshworks.com>"
+
+COPY . /conductor
+WORKDIR /conductor
+
+RUN ./gradlew build -x test -x spotlessCheck -PindexingBackend=${INDEXING_BACKEND}
+
+# ===========================================================================================================
+# 1. Runtime stage
+# ===========================================================================================================
+FROM alpine:3.19
+
+LABEL maintainer="Freshworks CAAS <search-team@freshworks.com>"
+
+RUN apk add --no-cache openjdk17 curl
+
+RUN mkdir -p /app/config /app/logs /app/libs
+
+COPY docker/server/bin /app
+COPY docker/server/config /app/config
+COPY --from=builder /conductor/server/build/libs/*boot*.jar /app/libs/conductor-server.jar
+
+RUN chmod +x /app/caasstartup.sh
+
+HEALTHCHECK --interval=60s --timeout=30s --retries=10 CMD curl -f http://localhost:8080/health || exit 1
+
+CMD [ "/app/caasstartup.sh" ]
+ENTRYPOINT [ "/bin/sh" ]

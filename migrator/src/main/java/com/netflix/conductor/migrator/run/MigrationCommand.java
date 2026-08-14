@@ -37,6 +37,9 @@ import com.netflix.conductor.migrator.sync.SyncRunner;
  *   --search            enumerate non-terminal (RUNNING/PAUSED) ids from the source (up to batchSize)
  *   --history           one-shot back-fill of TERMINAL executions (migrator.history.statuses),
  *                       paginated, dormant, no bootstrap; then exit (unless combined with --sync)
+ *   --repair            one-shot Redis repair: verifyAndRepair every non-terminal dest workflow
+ *                       (re-arm on a fresh Redis), loop to convergence, then exit. Repair ONLY —
+ *                       no schema/metadata/history/sync.
  *   --sync              continuous delta-sync loop: keep dormant dest copies current (no bootstrap),
  *                       re-enumerating the source each pass; runs until stopped
  * </pre>
@@ -60,6 +63,7 @@ public class MigrationCommand implements ApplicationRunner {
     private final MigrationRunner runner;
     private final MetadataMigrator metadataMigrator;
     private final HistoryMigrator historyMigrator;
+    private final RepairRunner repairRunner;
     private final SyncRunner syncRunner;
     private final SchemaInitializer schemaInitializer;
     private final SourceClient source;
@@ -71,6 +75,7 @@ public class MigrationCommand implements ApplicationRunner {
             MigrationRunner runner,
             MetadataMigrator metadataMigrator,
             HistoryMigrator historyMigrator,
+            RepairRunner repairRunner,
             SyncRunner syncRunner,
             SchemaInitializer schemaInitializer,
             SourceClient source,
@@ -79,6 +84,7 @@ public class MigrationCommand implements ApplicationRunner {
         this.runner = runner;
         this.metadataMigrator = metadataMigrator;
         this.historyMigrator = historyMigrator;
+        this.repairRunner = repairRunner;
         this.syncRunner = syncRunner;
         this.schemaInitializer = schemaInitializer;
         this.source = source;
@@ -97,22 +103,33 @@ public class MigrationCommand implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         boolean flagMetadata = args.containsOption("metadata");
         boolean flagHistory = args.containsOption("history");
+        boolean flagRepair = args.containsOption("repair");
         boolean flagSync = args.containsOption("sync");
         boolean doExecutions = args.containsOption("ids") || args.containsOption("search");
 
         // If no operation flag is given, fall back to config-driven mode (migrator.mode) — this is
         // how the k8s pod runs: plain `java -jar`, operations chosen entirely by config.
-        boolean anyFlag = flagMetadata || flagHistory || flagSync || doExecutions;
+        boolean anyFlag = flagMetadata || flagHistory || flagRepair || flagSync || doExecutions;
         List<String> mode = props.getMode();
         boolean doMetadata = flagMetadata || (!anyFlag && mode.contains("metadata"));
         boolean doHistory = flagHistory || (!anyFlag && mode.contains("history"));
+        boolean doRepair = flagRepair || (!anyFlag && mode.contains("repair"));
         boolean doSync = flagSync || (!anyFlag && mode.contains("sync"));
 
-        if (!doMetadata && !doHistory && !doSync && !doExecutions) {
+        if (!doMetadata && !doHistory && !doRepair && !doSync && !doExecutions) {
             log.error(
                     "Nothing to do. Set migrator.mode (e.g. metadata,sync) or pass --metadata,"
-                            + " --history, --sync, --ids=wf1,wf2 / --search. See MigrationCommand"
-                            + " docs.");
+                            + " --history, --repair, --sync, --ids=wf1,wf2 / --search. See"
+                            + " MigrationCommand docs.");
+            return;
+        }
+
+        // Redis-repair is a standalone, one-shot operation: re-arm non-terminal workflows on the
+        // dest's Redis via verifyAndRepair, then exit. It deliberately does NOT run schema-init,
+        // metadata, history, or sync — so handle it first and return.
+        if (doRepair) {
+            log.info("Running Redis repair only (no schema/metadata/history/sync).");
+            repairRunner.run();
             return;
         }
 

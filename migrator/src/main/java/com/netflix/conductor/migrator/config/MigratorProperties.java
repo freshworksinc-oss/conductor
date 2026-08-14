@@ -66,6 +66,9 @@ public class MigratorProperties {
     /** Poll-data migration settings. */
     private PollData pollData = new PollData();
 
+    /** Redis-repair (verifyAndRepair) settings — used by mode=repair. */
+    private Repair repair = new Repair();
+
     public Endpoint getSource() {
         return source;
     }
@@ -144,6 +147,42 @@ public class MigratorProperties {
 
     public void setPollData(PollData pollData) {
         this.pollData = pollData;
+    }
+
+    public Repair getRepair() {
+        return repair;
+    }
+
+    public void setRepair(Repair repair) {
+        this.repair = repair;
+    }
+
+    /**
+     * Redis-repair (mode=repair): re-arm non-terminal workflows on the destination's Redis via
+     * verifyAndRepair, looping until a pass repairs nothing (converged). Repair only.
+     */
+    public static class Repair {
+        /** Maximum re-arm passes before giving up (each pass re-enumerates the pending set). */
+        private int maxPasses = 5;
+
+        /** Delay between per-workflow verifyAndRepair calls (throttle the dest conductor). */
+        private long throttleMs = 50;
+
+        public int getMaxPasses() {
+            return maxPasses;
+        }
+
+        public void setMaxPasses(int maxPasses) {
+            this.maxPasses = maxPasses;
+        }
+
+        public long getThrottleMs() {
+            return throttleMs;
+        }
+
+        public void setThrottleMs(long throttleMs) {
+            this.throttleMs = throttleMs;
+        }
     }
 
     /** Poll-data (last-poll-time per taskDefName/domain) migration. */

@@ -60,6 +60,13 @@ migrator:
     # Transient/self-healing (workers repopulate on the dest); lastPollTime is stamped at migration
     # time by the DAO. Off by default.
     enabled: false
+  repair:
+    # mode=repair: re-arm non-terminal dest workflows on a fresh/new Redis via verifyAndRepair
+    # (after a Redis switch / new-Redis cutover). Repair ONLY — no sync/metadata/history. Enumerates
+    # the pending set from the dest workflow_pending table and calls migrator.dest.url per workflow;
+    # loops until a pass repairs nothing (converged). Set migrator.dest.url to the tenant conductor.
+    max-passes: 5
+    throttle-ms: 50
   metadata:
     # How definitions (task/workflow defs, event handlers) are written to the destination:
     #   rest → via the dest Conductor's REST API (default; cache-consistent on a live server)

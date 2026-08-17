@@ -33,43 +33,29 @@ public final class CentralPayloadUtils {
     private CentralPayloadUtils() {}
 
     /**
-     * The summary {@code input}/{@code output} fields are Strings that already contain serialized
-     * JSON, so they show up double-encoded (an escaped JSON string) in the payload. Central expects
-     * real nested objects, so this replaces the String node with the parsed JSON when the content
-     * is valid JSON. If it is not valid JSON (e.g. Java {@code toString()} when {@code
-     * conductor.app.summary-input-output-json-serialization.enabled=false}) the original string is
-     * kept so publishing never fails.
-     */
-    public static void inlineJsonString(
-            ObjectMapper objectMapper, ObjectNode payload, String field, String idField) {
-        JsonNode value = payload.get(field);
-        if (value != null && value.isTextual()) {
-            String text = value.asText();
-            if (text != null && !text.isEmpty()) {
-                try {
-                    payload.set(field, objectMapper.readTree(text));
-                } catch (IOException e) {
-                    LOGGER.debug(
-                            "Field '{}' is not valid JSON; leaving as string for {}",
-                            field,
-                            payload.path(idField).asText());
-                }
-            }
-        }
-    }
-
-    /**
      * Central consumers need tenant identity as a top-level field alongside {@code correlationId}
-     * and {@code domain}, not buried inside {@code input}. Copy (rather than move) it so existing
+     * and {@code domain}, not buried inside {@code input}. {@code input} is left untouched (it
+     * stays whatever shape the summary serialization produced) — this only reads {@code
+     * _tenantContext} out of it and copies (not moves) it to the payload root, so existing
      * consumers reading {@code input._tenantContext} keep working.
      */
-    public static void exposeTenantContextAtRoot(ObjectNode payload) {
+    public static void exposeTenantContextAtRoot(
+            ObjectMapper objectMapper, ObjectNode payload, String idField) {
         JsonNode inputNode = payload.get("input");
+        JsonNode tenantContext = null;
         if (inputNode instanceof ObjectNode) {
-            JsonNode tenantContext = inputNode.get("_tenantContext");
-            if (tenantContext != null) {
-                payload.set("_tenantContext", tenantContext);
+            tenantContext = inputNode.get("_tenantContext");
+        } else if (inputNode != null && inputNode.isTextual()) {
+            try {
+                tenantContext = objectMapper.readTree(inputNode.asText()).get("_tenantContext");
+            } catch (IOException e) {
+                LOGGER.debug(
+                        "input is not valid JSON; cannot extract _tenantContext for {}",
+                        payload.path(idField).asText());
             }
+        }
+        if (tenantContext != null) {
+            payload.set("_tenantContext", tenantContext);
         }
     }
 }

@@ -286,14 +286,10 @@ public class TaskStatusPublisher implements TaskStatusListener {
         // Parse existing JSON into JsonNode for wrapping
         JsonNode existingPayload = objectMapper.readTree(existingTaskJson);
 
-        // input/output are String fields that already hold serialized JSON, so they arrive
-        // double-encoded (an escaped JSON string, not an object). Inline them into real JSON
-        // nodes so Central receives clean nested objects it can parse in one pass.
+        // Surface tenant identity as a top-level field for Central consumers.
         if (existingPayload instanceof ObjectNode) {
             ObjectNode payloadNode = (ObjectNode) existingPayload;
-            CentralPayloadUtils.inlineJsonString(objectMapper, payloadNode, "input", "taskId");
-            CentralPayloadUtils.inlineJsonString(objectMapper, payloadNode, "output", "taskId");
-            CentralPayloadUtils.exposeTenantContextAtRoot(payloadNode);
+            CentralPayloadUtils.exposeTenantContextAtRoot(objectMapper, payloadNode, "taskId");
         }
 
         // Wrap in Central envelope

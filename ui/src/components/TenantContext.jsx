@@ -6,7 +6,7 @@ const TenantContext = createContext(null);
 
 // Role hierarchy: higher index = more permissions
 const ROLE_LEVELS = {
-  user: 0,
+  Viewer: 0,
   Editor: 1,
   SuperAdmin: 2,
 };

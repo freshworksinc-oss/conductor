@@ -388,4 +388,26 @@ public class StatusChangePublisherTest {
         // Should not publish because "running" != "RUNNING"
         verify(restClientManager, never()).postNotification(any(), anyString(), anyString(), any());
     }
+
+    @Test
+    public void testCustomWorkflowPayloadType() throws Exception {
+        List<String> subscribedStatuses = Collections.singletonList("RUNNING");
+        StatusChangePublisher publisher =
+                new StatusChangePublisher(
+                        restClientManager,
+                        executionDAOFacade,
+                        subscribedStatuses,
+                        "custom_workflow_status");
+
+        publisher.onWorkflowStarted(workflow);
+
+        TimeUnit.MILLISECONDS.sleep(100);
+
+        verify(restClientManager, timeout(1000).atLeastOnce())
+                .postNotification(
+                        eq(RestClientManager.NotificationType.WORKFLOW),
+                        argThat(json -> json.contains("\"payload_type\":\"custom_workflow_status\"")),
+                        eq(workflow.getWorkflowId()),
+                        any());
+    }
 }

@@ -42,7 +42,7 @@ public class TaskStatusPublisher implements TaskStatusListener {
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskStatusPublisher.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final String PAYLOAD_VERSION = "1.0";
-    private static final String TASK_PAYLOAD_TYPE = "conductor_task_status";
+    private static final String DEFAULT_TASK_PAYLOAD_TYPE = "conductor_task_status";
     private static final Integer QDEPTH =
             Integer.parseInt(
                     System.getenv().getOrDefault("ENV_TASK_NOTIFICATION_QUEUE_SIZE", "50"));
@@ -51,6 +51,7 @@ public class TaskStatusPublisher implements TaskStatusListener {
     private RestClientManager rcm;
     private ExecutionDAOFacade executionDAOFacade;
     private List<String> subscribedTaskStatusList;
+    private final String taskPayloadType;
 
     class ExceptionHandler implements Thread.UncaughtExceptionHandler {
         public void uncaughtException(Thread t, Throwable e) {
@@ -119,9 +120,21 @@ public class TaskStatusPublisher implements TaskStatusListener {
             RestClientManager rcm,
             ExecutionDAOFacade executionDAOFacade,
             List<String> subscribedTaskStatuses) {
+        this(rcm, executionDAOFacade, subscribedTaskStatuses, DEFAULT_TASK_PAYLOAD_TYPE);
+    }
+
+    public TaskStatusPublisher(
+            RestClientManager rcm,
+            ExecutionDAOFacade executionDAOFacade,
+            List<String> subscribedTaskStatuses,
+            String taskPayloadType) {
         this.rcm = rcm;
         this.executionDAOFacade = executionDAOFacade;
         this.subscribedTaskStatusList = subscribedTaskStatuses;
+        this.taskPayloadType =
+                taskPayloadType != null && !taskPayloadType.isBlank()
+                        ? taskPayloadType
+                        : DEFAULT_TASK_PAYLOAD_TYPE;
         validateSubscribedTaskStatuses(subscribedTaskStatuses);
         ConsumerThread consumerThread = new ConsumerThread();
         consumerThread.start();
@@ -295,7 +308,7 @@ public class TaskStatusPublisher implements TaskStatusListener {
         // Wrap in Central envelope
         ObjectNode centralMessage = objectMapper.createObjectNode();
         centralMessage.put("account_id", String.valueOf(accountId));
-        centralMessage.put("payload_type", TASK_PAYLOAD_TYPE);
+        centralMessage.put("payload_type", taskPayloadType);
         centralMessage.put("payload_version", PAYLOAD_VERSION);
         centralMessage.set("payload", existingPayload); // Keep ALL existing fields
 

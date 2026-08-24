@@ -43,7 +43,7 @@ public class StatusChangePublisher implements WorkflowStatusListener {
     private static final String NOTIFICATION_TYPE = "WORKFLOW";
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final String PAYLOAD_VERSION = "1.0";
-    private static final String WORKFLOW_PAYLOAD_TYPE = "conductor_workflow_status";
+    private static final String DEFAULT_WORKFLOW_PAYLOAD_TYPE = "conductor_workflow_status";
     private static final Integer QDEPTH =
             Integer.parseInt(
                     System.getenv().getOrDefault("ENV_WORKFLOW_NOTIFICATION_QUEUE_SIZE", "50"));
@@ -51,6 +51,7 @@ public class StatusChangePublisher implements WorkflowStatusListener {
     private RestClientManager rcm;
     private ExecutionDAOFacade executionDAOFacade;
     private List<String> subscribedWorkflowStatusList;
+    private final String workflowPayloadType;
 
     class ExceptionHandler implements Thread.UncaughtExceptionHandler {
         public void uncaughtException(Thread t, Throwable e) {
@@ -126,6 +127,14 @@ public class StatusChangePublisher implements WorkflowStatusListener {
             RestClientManager rcm,
             ExecutionDAOFacade executionDAOFacade,
             List<String> subscribedWorkflowStatuses) {
+        this(rcm, executionDAOFacade, subscribedWorkflowStatuses, DEFAULT_WORKFLOW_PAYLOAD_TYPE);
+    }
+
+    public StatusChangePublisher(
+            RestClientManager rcm,
+            ExecutionDAOFacade executionDAOFacade,
+            List<String> subscribedWorkflowStatuses,
+            String workflowPayloadType) {
         this.rcm = rcm;
         this.executionDAOFacade = executionDAOFacade;
         // Preserve backward compatibility - default to COMPLETED and TERMINATED
@@ -133,6 +142,10 @@ public class StatusChangePublisher implements WorkflowStatusListener {
                 (subscribedWorkflowStatuses != null && !subscribedWorkflowStatuses.isEmpty())
                         ? subscribedWorkflowStatuses
                         : Arrays.asList("COMPLETED", "TERMINATED");
+        this.workflowPayloadType =
+                workflowPayloadType != null && !workflowPayloadType.isBlank()
+                        ? workflowPayloadType
+                        : DEFAULT_WORKFLOW_PAYLOAD_TYPE;
         Monitors.registerWebhookQueueDepthGauge(blockingQueue, NOTIFICATION_TYPE);
         ConsumerThread consumerThread = new ConsumerThread();
         consumerThread.start();
@@ -262,7 +275,7 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         // Wrap in Central envelope
         ObjectNode centralMessage = objectMapper.createObjectNode();
         centralMessage.put("account_id", String.valueOf(accountId));
-        centralMessage.put("payload_type", WORKFLOW_PAYLOAD_TYPE);
+        centralMessage.put("payload_type", workflowPayloadType);
         centralMessage.put("payload_version", PAYLOAD_VERSION);
         centralMessage.set("payload", existingPayload); // Keep ALL existing fields
 

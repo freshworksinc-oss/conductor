@@ -1598,7 +1598,6 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                     task.setStartTime(System.currentTimeMillis());
                 }
                 if (!workflowSystemTask.isAsync()) {
-                    TaskModel.Status statusBeforeStart = task.getStatus();
                     try {
                         // start execution of synchronous system tasks
                         workflowSystemTask.start(workflow, task, this);
@@ -1613,8 +1612,15 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                     }
                     startedSystemTasks = true;
                     executionDAOFacade.updateTask(task);
-                    notifyTaskStatusListenerIfChanged(
-                            task, statusBeforeStart, workflow.getWorkflowId());
+                    try {
+                        notifyTaskStatusListener(task);
+                    } catch (Exception e) {
+                        String errorMsg =
+                                String.format(
+                                        "Error while notifying TaskStatusListener: %s for workflow: %s",
+                                        task.getTaskId(), workflow.getWorkflowId());
+                        LOGGER.error(errorMsg, e);
+                    }
                 } else {
                     tasksToBeQueued.add(task);
                 }

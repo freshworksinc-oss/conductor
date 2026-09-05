@@ -1168,6 +1168,22 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
         }
     }
 
+    private void notifyTaskStatusListenerIfChanged(
+            TaskModel task, TaskModel.Status previousStatus, String workflowId) {
+        if (previousStatus == task.getStatus()) {
+            return;
+        }
+        try {
+            notifyTaskStatusListener(task);
+        } catch (Exception e) {
+            String errorMsg =
+                    String.format(
+                            "Error while notifying TaskStatusListener: %s for workflow: %s",
+                            task.getTaskId(), workflowId);
+            LOGGER.error(errorMsg, e);
+        }
+    }
+
     private void extendLease(TaskResult taskResult) {
         TaskModel task =
                 Optional.ofNullable(executionDAOFacade.getTaskModel(taskResult.getTaskId()))
@@ -1365,6 +1381,7 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                 tasksToBeScheduled = dedupAndAddTasks(workflow, tasksToBeScheduled);
 
                 boolean stateChanged = scheduleTask(workflow, tasksToBeScheduled);
+                List<Map.Entry<TaskModel, TaskModel.Status>> syncExecutedTasks = new ArrayList<>();
 
                 for (TaskModel task : outcome.tasksToBeScheduled) {
                     executionDAOFacade.populateTaskData(task);
@@ -1372,19 +1389,26 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                             && NON_TERMINAL_TASK.test(task)) {
                         WorkflowSystemTask workflowSystemTask =
                                 systemTaskRegistry.get(task.getTaskType());
-                        if (!workflowSystemTask.isAsync()
-                                && executeSyncSystemTaskWithSecrets(
-                                        workflowSystemTask, workflow, task)) {
-                            // Sync system tasks skip the task-update API path, so check here.
-                            validateSystemTaskOutput(task);
-                            tasksToBeUpdated.add(task);
-                            stateChanged = true;
+                        if (!workflowSystemTask.isAsync()) {
+                            TaskModel.Status statusBeforeExecute = task.getStatus();
+                            if (executeSyncSystemTaskWithSecrets(
+                                    workflowSystemTask, workflow, task)) {
+                                // Sync system tasks skip the task-update API path, so check here.
+                                validateSystemTaskOutput(task);
+                                tasksToBeUpdated.add(task);
+                                stateChanged = true;
+                                syncExecutedTasks.add(Map.entry(task, statusBeforeExecute));
+                            }
                         }
                     }
                 }
 
                 if (!outcome.tasksToBeUpdated.isEmpty() || !tasksToBeScheduled.isEmpty()) {
                     executionDAOFacade.updateTasks(tasksToBeUpdated);
+                    for (Map.Entry<TaskModel, TaskModel.Status> entry : syncExecutedTasks) {
+                        notifyTaskStatusListenerIfChanged(
+                                entry.getKey(), entry.getValue(), workflow.getWorkflowId());
+                    }
                 }
 
                 if (stateChanged) {
@@ -2102,6 +2126,7 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                     task.setStartTime(System.currentTimeMillis());
                 }
                 if (!workflowSystemTask.isAsync()) {
+                    TaskModel.Status statusBeforeStart = task.getStatus();
                     try {
                         // start execution of synchronous system tasks
                         startSyncSystemTaskWithSecrets(workflowSystemTask, workflow, task);
@@ -2116,6 +2141,8 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                     }
                     startedSystemTasks = true;
                     executionDAOFacade.updateTask(task);
+                    notifyTaskStatusListenerIfChanged(
+                            task, statusBeforeStart, workflow.getWorkflowId());
                 } else {
                     tasksToBeQueued.add(task);
                 }

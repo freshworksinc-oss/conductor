@@ -19,6 +19,7 @@ import com.netflix.conductor.core.config.ConductorProperties
 import com.netflix.conductor.core.dal.ExecutionDAOFacade
 import com.netflix.conductor.core.execution.tasks.SubWorkflow
 import com.netflix.conductor.core.execution.tasks.WorkflowSystemTask
+import com.netflix.conductor.core.listener.TaskStatusListener
 import com.netflix.conductor.core.utils.IDGenerator
 import com.netflix.conductor.core.utils.QueueUtils
 import com.netflix.conductor.dao.MetadataDAO
@@ -38,6 +39,7 @@ class AsyncSystemTaskExecutorTest extends Specification {
     QueueDAO queueDAO
     MetadataDAO metadataDAO
     WorkflowExecutor workflowExecutor
+    TaskStatusListener taskStatusListener
 
     @Subject
     AsyncSystemTaskExecutor executor
@@ -50,6 +52,7 @@ class AsyncSystemTaskExecutorTest extends Specification {
         queueDAO = Mock(QueueDAO.class)
         metadataDAO = Mock(MetadataDAO.class)
         workflowExecutor = Mock(WorkflowExecutor.class)
+        taskStatusListener = Mock(TaskStatusListener.class)
 
         workflowSystemTask = Mock(WorkflowSystemTask.class) {
             isTaskRetrievalRequired() >> true
@@ -58,7 +61,7 @@ class AsyncSystemTaskExecutorTest extends Specification {
         properties.taskExecutionPostponeDuration = Duration.ofSeconds(1)
         properties.systemTaskWorkerCallbackDuration = Duration.ofSeconds(1)
 
-        executor = new AsyncSystemTaskExecutor(executionDAOFacade, queueDAO, metadataDAO, properties, workflowExecutor)
+        executor = new AsyncSystemTaskExecutor(executionDAOFacade, queueDAO, metadataDAO, properties, workflowExecutor, taskStatusListener)
     }
 
     // this is not strictly a unit test, but its essential to test AsyncSystemTaskExecutor with SubWorkflow

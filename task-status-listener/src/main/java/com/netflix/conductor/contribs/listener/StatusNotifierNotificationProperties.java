@@ -32,6 +32,10 @@ public class StatusNotifierNotificationProperties {
 
     private List<String> subscribedWorkflowStatuses;
 
+    private String workflowPayloadType = "conductor_workflow_status";
+
+    private String taskPayloadType = "conductor_task_status";
+
     private String headerPrefer = "";
 
     private String headerPreferValue = "";
@@ -160,5 +164,21 @@ public class StatusNotifierNotificationProperties {
 
     public void setSubscribedWorkflowStatuses(List<String> subscribedWorkflowStatuses) {
         this.subscribedWorkflowStatuses = subscribedWorkflowStatuses;
+    }
+
+    public String getWorkflowPayloadType() {
+        return workflowPayloadType;
+    }
+
+    public void setWorkflowPayloadType(String workflowPayloadType) {
+        this.workflowPayloadType = workflowPayloadType;
+    }
+
+    public String getTaskPayloadType() {
+        return taskPayloadType;
+    }
+
+    public void setTaskPayloadType(String taskPayloadType) {
+        this.taskPayloadType = taskPayloadType;
     }
 }

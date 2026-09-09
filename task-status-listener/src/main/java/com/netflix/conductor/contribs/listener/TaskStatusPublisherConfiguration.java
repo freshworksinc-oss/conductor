@@ -31,6 +31,10 @@ public class TaskStatusPublisherConfiguration {
             ExecutionDAOFacade executionDAOFacade,
             StatusNotifierNotificationProperties config) {
 
-        return new TaskStatusPublisher(rcm, executionDAOFacade, config.getSubscribedTaskStatuses());
+        return new TaskStatusPublisher(
+                rcm,
+                executionDAOFacade,
+                config.getSubscribedTaskStatuses(),
+                config.getTaskPayloadType());
     }
 }

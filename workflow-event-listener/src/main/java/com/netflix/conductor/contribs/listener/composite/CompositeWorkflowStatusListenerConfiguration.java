@@ -166,7 +166,8 @@ public class CompositeWorkflowStatusListenerConfiguration {
                 return new StatusChangePublisher(
                         restClientManager.get(),
                         executionDAOFacade,
-                        notifierProperties.get().getSubscribedWorkflowStatuses());
+                        notifierProperties.get().getSubscribedWorkflowStatuses(),
+                        notifierProperties.get().getWorkflowPayloadType());
 
             case "archive":
                 if (!archiveProperties.isPresent()) {

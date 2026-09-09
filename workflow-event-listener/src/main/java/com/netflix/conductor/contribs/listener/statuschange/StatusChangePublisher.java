@@ -89,10 +89,12 @@ public class StatusChangePublisher implements WorkflowStatusListener {
                 } catch (Exception e) {
                     if (statusChangeNotification != null) {
                         LOGGER.error(
-                                " Error while publishing workflow. Hence updating elastic search index workflowid {} workflowname {} correlationId {}",
+                                " Error while publishing workflow. Hence updating elastic search index workflowid {} workflowname {} correlationId {} error {} cause {}",
                                 workflow.getWorkflowId(),
                                 workflow.getWorkflowName(),
-                                workflow.getCorrelationId());
+                                workflow.getCorrelationId(),
+                                e.getMessage(),
+                                e.getCause() != null ? e.getCause().getMessage() : "N/A");
                         // TBD executionDAOFacade.indexWorkflow(workflow);
                     } else {
                         LOGGER.error("Failed to publish workflow: Workflow is NULL");

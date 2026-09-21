@@ -24,6 +24,7 @@ import com.netflix.conductor.annotations.protogen.ProtoField;
 import com.netflix.conductor.annotations.protogen.ProtoMessage;
 import com.netflix.conductor.common.metadata.workflow.WorkflowTask;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.google.protobuf.Any;
 import io.swagger.v3.oas.annotations.Hidden;
 
@@ -210,6 +211,15 @@ public class Task {
 
     // If the task is an event associated with a parent task, the id of the parent task
     private String parentTaskId;
+
+    /**
+     * Resolved secret/environment name to value map, injected at poll time from the task
+     * definition's declared {@code runtimeMetadata} names. Wire-only (REST/JSON): never persisted
+     * on {@code TaskModel}, not given a {@code @ProtoField} id, and intentionally excluded from
+     * {@link #toString()}, {@link #equals(Object)}, {@link #hashCode()}, and {@link #copy()}.
+     */
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, String> runtimeMetadata = new HashMap<>();
 
     public Task() {}
 
@@ -771,6 +781,23 @@ public class Task {
 
     public void setParentTaskId(String parentTaskId) {
         this.parentTaskId = parentTaskId;
+    }
+
+    /**
+     * @return the resolved secret/environment name to value map, injected at poll time
+     */
+    public Map<String, String> getRuntimeMetadata() {
+        return runtimeMetadata;
+    }
+
+    /**
+     * @param runtimeMetadata the resolved secret/environment name to value map to set
+     */
+    public void setRuntimeMetadata(Map<String, String> runtimeMetadata) {
+        if (runtimeMetadata == null) {
+            runtimeMetadata = new HashMap<>();
+        }
+        this.runtimeMetadata = runtimeMetadata;
     }
 
     public long getFirstStartTime() {

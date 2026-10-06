@@ -192,7 +192,7 @@ public class ExecutionService {
                 .forEach(
                         task -> {
                             try {
-                                taskStatusListener.onTaskInProgress(task);
+                                taskStatusListener.onTaskInProgressIfEnabled(task);
                             } catch (Exception e) {
                                 String errorMsg =
                                         String.format(

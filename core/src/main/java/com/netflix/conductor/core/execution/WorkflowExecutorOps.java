@@ -1125,7 +1125,7 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                             systemTaskRegistry.get(task.getTaskType());
                     if (!workflowSystemTask.isAsync()) {
                         TaskModel.Status statusBeforeExecute = task.getStatus();
-                        if (workflowSystemTask.execute(workflow, task, this)) {
+                        if (executeSyncSystemTaskWithSecrets(workflowSystemTask, workflow, task)) {
                             tasksToBeUpdated.add(task);
                             stateChanged = true;
                             syncExecutedTasks.add(Map.entry(task, statusBeforeExecute));
@@ -1609,7 +1609,7 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                 if (!workflowSystemTask.isAsync()) {
                     try {
                         // start execution of synchronous system tasks
-                        workflowSystemTask.start(workflow, task, this);
+                        startSyncSystemTaskWithSecrets(workflowSystemTask, workflow, task);
                     } catch (Exception e) {
                         String errorMsg =
                                 String.format(
@@ -1663,6 +1663,47 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
             Monitors.error(CLASS_NAME, "scheduleTask");
         }
         return startedSystemTasks;
+    }
+
+    /**
+     * Runs a synchronous system task's {@code start(...)} (e.g. JSON_JQ_TRANSFORM, WAIT, HUMAN)
+     * against a secret-resolved view of its input, while keeping the persisted task input literal.
+     *
+     * <p>{@code ${workflow.secrets.X}} references are deferred at schedule time and are normally
+     * only resolved at task hand-off (worker poll or async system task execution). Synchronous
+     * system tasks execute inline in the decide loop and never go through those hand-off points, so
+     * without this substitution they would see the literal, unresolved secret reference.
+     */
+    private void startSyncSystemTaskWithSecrets(
+            WorkflowSystemTask systemTask, WorkflowModel workflow, TaskModel task) {
+        Map<String, Object> literalInput = task.getInputData();
+        try {
+            task.setInputData(parametersUtils.substituteSecrets(literalInput));
+            systemTask.start(workflow, task, this);
+        } finally {
+            task.setInputData(literalInput);
+        }
+    }
+
+    /**
+     * Runs a synchronous system task's {@code execute(...)} (e.g. INLINE, SET_VARIABLE) against a
+     * secret-resolved view of its input, while keeping the persisted task input literal.
+     *
+     * <p>Some system tasks (e.g. {@code Inline}, {@code SetVariable}) only implement {@code
+     * execute(...)} and rely on the default no-op {@code start(...)}; for those, the actual
+     * synchronous execution happens here in the decide loop rather than at the {@link
+     * #scheduleTask} start hook. See {@link #startSyncSystemTaskWithSecrets} for the {@code
+     * start(...)} counterpart.
+     */
+    private boolean executeSyncSystemTaskWithSecrets(
+            WorkflowSystemTask systemTask, WorkflowModel workflow, TaskModel task) {
+        Map<String, Object> literalInput = task.getInputData();
+        try {
+            task.setInputData(parametersUtils.substituteSecrets(literalInput));
+            return systemTask.execute(workflow, task, this);
+        } finally {
+            task.setInputData(literalInput);
+        }
     }
 
     private void addTaskToQueue(final List<TaskModel> tasks) {

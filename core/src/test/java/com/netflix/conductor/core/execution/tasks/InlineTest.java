@@ -17,6 +17,7 @@ import java.util.Map;
 
 import org.junit.Test;
 
+import com.netflix.conductor.core.config.ConductorProperties;
 import com.netflix.conductor.core.execution.WorkflowExecutor;
 import com.netflix.conductor.core.execution.evaluators.Evaluator;
 import com.netflix.conductor.core.execution.evaluators.JavascriptEvaluator;
@@ -135,7 +136,7 @@ public class InlineTest {
     private Map<String, Evaluator> getStringEvaluatorMap() {
         Map<String, Evaluator> evaluators = new HashMap<>();
         evaluators.put(ValueParamEvaluator.NAME, new ValueParamEvaluator());
-        evaluators.put(JavascriptEvaluator.NAME, new JavascriptEvaluator());
+        evaluators.put(JavascriptEvaluator.NAME, new JavascriptEvaluator(mock(ConductorProperties.class)));
         return evaluators;
     }
 }

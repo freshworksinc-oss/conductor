@@ -22,6 +22,7 @@ ext {
     revBval = '2.0.5'
     revCassandra = '3.10.2'
     revCassandraUnit = '3.11.2.0'
+    revScylla = '3.11.5.0'
     revCommonsIo = '2.7'
     revDynoQueues = '2.0.20'
     revElasticSearch6 = '6.8.23'

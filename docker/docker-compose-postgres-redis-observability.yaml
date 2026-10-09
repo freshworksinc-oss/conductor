@@ -1,0 +1,139 @@
+version: '3.8'
+
+services:
+  conductor-postgres:
+    image: postgres:15
+    container_name: conductor-postgres
+    environment:
+      - POSTGRES_USER=conductor
+      - POSTGRES_PASSWORD=conductor
+      - POSTGRES_DB=conductor
+    ports:
+      - "6432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - conductor-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conductor -d conductor"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  conductor-redis:
+    image: redis:6.2.3
+    container_name: conductor-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - conductor-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: conductor-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - conductor-network
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: conductor-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    networks:
+      - conductor-network
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: conductor-jaeger
+    ports:
+      - "16686:16686"
+      - "4319:4318"
+      - "4320:4317"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    networks:
+      - conductor-network
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    container_name: conductor-otel-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4329:4318"
+    networks:
+      - conductor-network
+    depends_on:
+      - jaeger
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: conductor-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./observability/promtail/promtail-config.yaml:/etc/promtail/config.yml:ro
+      - ../server/logs:/var/log/conductor-host:ro
+      - conductor_logs:/var/log/conductor-docker:ro
+    networks:
+      - conductor-network
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: conductor-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - conductor-network
+    depends_on:
+      - prometheus
+      - loki
+      - jaeger
+      - otel-collector
+    restart: unless-stopped
+
+networks:
+  conductor-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  conductor_logs:

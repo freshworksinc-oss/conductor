@@ -38,6 +38,7 @@ include 'common'
 include 'core'
 
 include 'cassandra-persistence'
+include 'scylla-persistence'
 include 'redis-persistence'
 
 include 'es6-persistence'

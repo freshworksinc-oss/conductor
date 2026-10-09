@@ -116,4 +116,7 @@ ext {
     revCommonsCompress = '1.26.1'
     pinecone = '3.0.0'
     revFlexmark = '0.64.8'
+    revOpenTelemetryApi = '1.43.0'
+    revOpenTelemetryJavaagent = '2.14.0'
+    revPyroscope = '0.14.0'
 }

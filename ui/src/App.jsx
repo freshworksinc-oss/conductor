@@ -29,6 +29,7 @@ import Gantt from "./pages/kitchensink/Gantt";
 import CustomRoutes from "./plugins/CustomRoutes";
 import AppBarModules from "./plugins/AppBarModules";
 import CustomAppBarButtons from "./plugins/CustomAppBarButtons";
+import RoleGate from "./components/RoleGate";
 
 import Workbench from "./pages/workbench/Workbench";
 import { getBasename } from "./utils/helpers";
@@ -92,9 +93,11 @@ export default function App() {
           <Button component={NavLink} path="/taskQueue">
             Task Queues
           </Button>
-          <Button component={NavLink} path="/workbench">
-            Workbench
-          </Button>
+          <RoleGate minRole="Editor">
+            <Button component={NavLink} path="/workbench">
+              Workbench
+            </Button>
+          </RoleGate>
           <CustomAppBarButtons />
 
           <div className={classes.toolbarRight}>
@@ -152,7 +155,9 @@ export default function App() {
               <TaskQueue />
             </Route>
             <Route exact path="/workbench">
-              <Workbench />
+              <RoleGate minRole="Editor">
+                <Workbench />
+              </RoleGate>
             </Route>
             <Route exact path="/kitchen">
               <KitchenSink />

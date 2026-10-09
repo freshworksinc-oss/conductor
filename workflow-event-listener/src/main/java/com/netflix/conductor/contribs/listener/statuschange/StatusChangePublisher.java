@@ -15,6 +15,7 @@ package com.netflix.conductor.contribs.listener.statuschange;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 
@@ -24,17 +25,25 @@ import javax.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.netflix.conductor.contribs.listener.CentralPayloadUtils;
 import com.netflix.conductor.contribs.listener.RestClientManager;
 import com.netflix.conductor.core.dal.ExecutionDAOFacade;
 import com.netflix.conductor.core.listener.WorkflowStatusListener;
 import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.model.WorkflowModel;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
 @Singleton
 public class StatusChangePublisher implements WorkflowStatusListener {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(StatusChangePublisher.class);
     private static final String NOTIFICATION_TYPE = "WORKFLOW";
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String PAYLOAD_VERSION = "1.0";
+    private static final String WORKFLOW_PAYLOAD_TYPE = "conductor_workflow_status";
     private static final Integer QDEPTH =
             Integer.parseInt(
                     System.getenv().getOrDefault("ENV_WORKFLOW_NOTIFICATION_QUEUE_SIZE", "50"));
@@ -67,10 +76,15 @@ public class StatusChangePublisher implements WorkflowStatusListener {
             while (true) {
                 try {
                     workflow = blockingQueue.take();
+                    // Extract accountId from WorkflowModel BEFORE serialization
+                    Object accountId =
+                            workflow.getInput() != null
+                                    ? workflow.getInput().get("accountId")
+                                    : null;
                     statusChangeNotification = new StatusChangeNotification(workflow.toWorkflow());
                     String jsonWorkflow = statusChangeNotification.toJsonString();
                     LOGGER.info("Publishing StatusChangeNotification: {}", jsonWorkflow);
-                    publishStatusChangeNotification(statusChangeNotification);
+                    publishStatusChangeNotification(statusChangeNotification, accountId);
                     LOGGER.debug(
                             "Workflow {} publish is successful.",
                             statusChangeNotification.getWorkflowId());
@@ -90,7 +104,12 @@ public class StatusChangePublisher implements WorkflowStatusListener {
                     } else {
                         LOGGER.error("Failed to publish workflow: Workflow is NULL");
                     }
-                    LOGGER.error("Error on publishing workflow", e);
+                    LOGGER.error(
+                            "Error on publishing workflow. Exception type: {}, Message: {}, Cause: {}",
+                            e.getClass().getName(),
+                            e.getMessage(),
+                            e.getCause() != null ? e.getCause().getMessage() : "N/A",
+                            e);
                     if (workflow != null) {
                         Monitors.recordWebhookPublishFailure(
                                 NOTIFICATION_TYPE,
@@ -217,13 +236,56 @@ public class StatusChangePublisher implements WorkflowStatusListener {
         Monitors.recordWebhookEnqueueFailure(NOTIFICATION_TYPE, workflow.getWorkflowName());
     }
 
-    private void publishStatusChangeNotification(StatusChangeNotification statusChangeNotification)
+    private void publishStatusChangeNotification(
+            StatusChangeNotification statusChangeNotification, Object accountId)
             throws IOException {
-        String jsonWorkflow = statusChangeNotification.toJsonStringWithInputOutput();
+        // Get the existing workflow JSON (with all current fields)
+        String existingWorkflowJson = statusChangeNotification.toJsonStringWithInputOutput();
+
+        if (!Objects.nonNull(accountId) || accountId.toString().trim().isEmpty()) {
+            accountId = "-1";
+            LOGGER.warn(
+                    "Account ID is missing in workflow input. Workflow ID: {}. Using default fallback account_id: {}",
+                    statusChangeNotification.getWorkflowId(),
+                    accountId);
+        }
+
+        // Parse existing JSON into JsonNode for wrapping
+        JsonNode existingPayload = objectMapper.readTree(existingWorkflowJson);
+
+        // Surface tenant identity as a top-level field for Central consumers.
+        if (existingPayload instanceof ObjectNode) {
+            ObjectNode payloadNode = (ObjectNode) existingPayload;
+            CentralPayloadUtils.exposeTenantContextAtRoot(objectMapper, payloadNode, "workflowId");
+        }
+
+        // Wrap in Central envelope
+        ObjectNode centralMessage = objectMapper.createObjectNode();
+        centralMessage.put("account_id", String.valueOf(accountId));
+        centralMessage.put("payload_type", WORKFLOW_PAYLOAD_TYPE);
+        centralMessage.put("payload_version", PAYLOAD_VERSION);
+        centralMessage.set("payload", existingPayload); // Keep ALL existing fields
+
+        String wrappedJson = centralMessage.toString();
+
+        LOGGER.info(
+                "Preparing to publish Workflow to Central with envelope. Workflow ID: {}, Account ID: {}",
+                statusChangeNotification.getWorkflowId(),
+                accountId);
+        LOGGER.debug("Workflow Event Payload to be published to Central: {}", wrappedJson);
+        LOGGER.debug(
+                "Attempting HTTP POST to Central for workflow: {}",
+                statusChangeNotification.getWorkflowId());
+
+        // Send wrapped JSON to Central
         rcm.postNotification(
                 RestClientManager.NotificationType.WORKFLOW,
-                jsonWorkflow,
+                wrappedJson,
                 statusChangeNotification.getWorkflowId(),
                 statusChangeNotification.getStatusNotifier());
+
+        LOGGER.info(
+                "Workflow {} publish to Central is successful.",
+                statusChangeNotification.getWorkflowId());
     }
 }

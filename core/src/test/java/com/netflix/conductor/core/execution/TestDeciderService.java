@@ -45,6 +45,7 @@ import com.netflix.conductor.common.metadata.workflow.SubWorkflowParams;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowTask;
 import com.netflix.conductor.common.utils.TaskUtils;
+import com.netflix.conductor.core.config.ConductorProperties;
 import com.netflix.conductor.core.exception.TerminateWorkflowException;
 import com.netflix.conductor.core.execution.DeciderService.DeciderOutcome;
 import com.netflix.conductor.core.execution.mapper.TaskMapper;
@@ -77,6 +78,11 @@ public class TestDeciderService {
     @Configuration
     @ComponentScan(basePackageClasses = TaskMapper.class) // loads all TaskMapper beans
     public static class TestConfiguration {
+
+        @Bean
+        public ConductorProperties conductorProperties() {
+            return new ConductorProperties();
+        }
 
         @Bean(TASK_TYPE_SUB_WORKFLOW)
         public SubWorkflow subWorkflow(ObjectMapper objectMapper, IDGenerator idGenerator) {

@@ -45,6 +45,8 @@ dependencies {
 
     implementation "io.micrometer:micrometer-core:${revMicrometer}"
     implementation "com.google.guava:guava:${revGuava}"
+    // API only; export via OpenTelemetry Java agent (see docs/documentation/observability/tracing.md)
+    implementation "io.opentelemetry:opentelemetry-api:${revOpenTelemetryApi}"
 
     //GraalVM dependencies for executing JavaScript and Python
     // PINNED (#964): all GraalVM artifacts must use the same version (revGraalVM in dependencies.gradle)

@@ -16,13 +16,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import com.netflix.conductor.core.config.ConductorProperties;
 import com.netflix.conductor.core.events.ScriptEvaluator;
 
 @Component(JavascriptEvaluator.NAME)
 public class JavascriptEvaluator implements Evaluator {
 
     public static final String NAME = "javascript";
+    public static final String UNIQUE_DELIMITER = "###DEL###"; // Highly unlikely sequence
     private static final Logger LOGGER = LoggerFactory.getLogger(JavascriptEvaluator.class);
+
+    private final ConductorProperties properties;
+
+    public JavascriptEvaluator(ConductorProperties properties) {
+        this.properties = properties;
+    }
 
     @Override
     public Object evaluate(String expression, Object input) {
@@ -31,6 +39,9 @@ public class JavascriptEvaluator implements Evaluator {
         // any PolyglotMap/PolyglotList references created during eval cannot escape a closed
         // Context (see TaskModelProtoMapper.convertToJsonMap regression that motivated this).
         Object inputCopy = ScriptEvaluator.deepCopy(input);
+        if (properties.isJavascriptEvaluatorReplaceUniqueDelimiterEnabled()) {
+            expression = expression.replace(UNIQUE_DELIMITER, "\\'");
+        }
         Object result = ScriptEvaluator.eval(expression, inputCopy);
         LOGGER.debug("Javascript evaluator -- result: {}", result);
         return result;

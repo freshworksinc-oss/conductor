@@ -108,6 +108,13 @@ public class WorkflowModel {
 
     private Status previousStatus;
 
+    /**
+     * Row version used by scylla-persistence for optimistic locking (UPDATE ... IF version = ?).
+     * Read from / written to the "version" column, never to the JSON payload. Unused by other
+     * persistence modules.
+     */
+    @JsonIgnore private int version;
+
     @JsonIgnore private Map<String, Object> input = new HashMap<>();
 
     @JsonIgnore private Map<String, Object> output = new HashMap<>();
@@ -118,6 +125,16 @@ public class WorkflowModel {
 
     public Status getPreviousStatus() {
         return previousStatus;
+    }
+
+    @JsonIgnore
+    public int getVersion() {
+        return version;
+    }
+
+    @JsonIgnore
+    public void setVersion(int version) {
+        this.version = version;
     }
 
     public void setPreviousStatus(Status status) {

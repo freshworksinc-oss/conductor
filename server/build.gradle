@@ -43,6 +43,7 @@ dependencies {
     implementation project(':conductor-redis-configuration')
     implementation project(':conductor-redis-persistence')
     implementation project(':conductor-cassandra-persistence')
+    implementation project(':conductor-scylla-persistence')
     implementation project(':conductor-postgres-persistence')
     implementation project(':conductor-mysql-persistence')
     implementation project(':conductor-sqlite-persistence')
@@ -131,6 +132,14 @@ dependencies {
 
 configurations {
     otelJAR
+}
+
+// scylla-driver-core is a drop-in fork of cassandra-driver-core 3.x with the same
+// com.datastax.driver.core packages. Keep only one on the server classpath.
+configurations.all {
+    resolutionStrategy.dependencySubstitution {
+        substitute module('com.datastax.cassandra:cassandra-driver-core') using module("com.scylladb:scylla-driver-core:${revScylla}")
+    }
 }
 
 dependencies {

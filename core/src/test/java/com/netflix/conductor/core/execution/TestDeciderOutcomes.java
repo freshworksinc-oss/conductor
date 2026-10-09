@@ -116,6 +116,11 @@ public class TestDeciderOutcomes {
     @ComponentScan(basePackageClasses = {Evaluator.class}) // load all Evaluator beans.
     public static class TestConfiguration {
 
+        @Bean
+        public ConductorProperties conductorProperties() {
+            return new ConductorProperties();
+        }
+
         @Bean(TASK_TYPE_DECISION)
         public Decision decision() {
             return new Decision();

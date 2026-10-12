@@ -440,7 +440,10 @@ public class StatusChangePublisherTest {
         verify(restClientManager, timeout(1000).atLeastOnce())
                 .postNotification(
                         eq(RestClientManager.NotificationType.WORKFLOW),
-                        argThat(json -> json.contains("\"payload_type\":\"custom_workflow_status\"")),
+                        argThat(
+                                json ->
+                                        json.contains(
+                                                "\"payload_type\":\"custom_workflow_status\"")),
                         eq(workflow.getWorkflowId()),
                         any());
     }

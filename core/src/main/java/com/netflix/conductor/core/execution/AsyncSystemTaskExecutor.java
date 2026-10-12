@@ -335,7 +335,6 @@ public class AsyncSystemTaskExecutor {
                         >= effectiveResponseTimeoutSeconds(task) * 1000L;
     }
 
-
     private void notifyTaskStatusListener(TaskModel task, String workflowId) {
         try {
             switch (task.getStatus()) {

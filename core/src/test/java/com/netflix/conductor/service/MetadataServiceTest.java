@@ -620,7 +620,10 @@ public class MetadataServiceTest {
 
         MetadataService service =
                 new MetadataServiceImpl(
-                        paginatedDAO, eventHandlerDAO, new MetadataChangeListenerStub(), properties);
+                        paginatedDAO,
+                        eventHandlerDAO,
+                        new MetadataChangeListenerStub(),
+                        properties);
         SearchResult<WorkflowDef> result = service.searchWorkflowDefsLatestVersions(0, 5);
 
         assertNotNull(result);
@@ -667,7 +670,7 @@ public class MetadataServiceTest {
 
         verify(metadataDAO, times(3)).getAllWorkflowDefsLatestVersions();
     }
-    
+
     @Test
     public void testSearchWorkflowDefsLatestVersionsWithFilterPaginatedDAO() {
         MetadataDAO paginatedDAO =
@@ -692,7 +695,10 @@ public class MetadataServiceTest {
 
         MetadataService service =
                 new MetadataServiceImpl(
-                        paginatedDAO, eventHandlerDAO, new MetadataChangeListenerStub(), properties);
+                        paginatedDAO,
+                        eventHandlerDAO,
+                        new MetadataChangeListenerStub(),
+                        properties);
         SearchResult<WorkflowDef> result =
                 service.searchWorkflowDefsLatestVersions(0, 10, "name", "payment");
 

@@ -280,7 +280,8 @@ public class InlineTest {
     private Map<String, Evaluator> getStringEvaluatorMap() {
         Map<String, Evaluator> evaluators = new HashMap<>();
         evaluators.put(ValueParamEvaluator.NAME, new ValueParamEvaluator());
-        evaluators.put(JavascriptEvaluator.NAME, new JavascriptEvaluator(new ConductorProperties()));
+        evaluators.put(
+                JavascriptEvaluator.NAME, new JavascriptEvaluator(new ConductorProperties()));
         evaluators.put(GraalJSEvaluator.NAME, new GraalJSEvaluator());
         return evaluators;
     }

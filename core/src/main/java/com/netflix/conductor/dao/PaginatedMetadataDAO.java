@@ -30,7 +30,7 @@ public interface PaginatedMetadataDAO {
      * @return SearchResult containing total count and paginated list of latest workflow definitions
      */
     SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(int start, int size);
-    
+
     /**
      * Search for the latest versions of workflow definitions with pagination and field-level
      * filtering. When filterField and filterValue are both non-null and non-empty, only workflow
@@ -46,5 +46,5 @@ public interface PaginatedMetadataDAO {
      *     definitions
      */
     SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(
-        int start, int size, String filterField, String filterValue);
+            int start, int size, String filterField, String filterValue);
 }

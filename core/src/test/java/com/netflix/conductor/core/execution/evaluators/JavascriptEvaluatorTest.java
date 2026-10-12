@@ -23,7 +23,8 @@ import static org.junit.Assert.*;
 
 public class JavascriptEvaluatorTest {
 
-    private final JavascriptEvaluator evaluator = new JavascriptEvaluator(new ConductorProperties());
+    private final JavascriptEvaluator evaluator =
+            new JavascriptEvaluator(new ConductorProperties());
 
     @Test
     public void testBasicEvaluation() {

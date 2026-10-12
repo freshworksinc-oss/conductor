@@ -23,7 +23,6 @@ import java.util.function.Consumer;
 import javax.sql.DataSource;
 
 import org.apache.commons.lang3.StringUtils;
-
 import org.springframework.retry.support.RetryTemplate;
 
 import com.netflix.conductor.common.metadata.events.EventHandler;
@@ -325,7 +324,6 @@ public class PostgresMetadataDAO extends PostgresBaseDAO
                     return new SearchResult<>(totalHits, results);
                 });
     }
-
 
     public List<WorkflowDef> getAllLatest() {
         final String GET_ALL_LATEST_WORKFLOW_DEF_QUERY =

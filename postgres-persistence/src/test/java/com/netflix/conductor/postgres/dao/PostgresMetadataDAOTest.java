@@ -591,7 +591,6 @@ public class PostgresMetadataDAOTest {
         assertNotNull(result);
         assertTrue(result.getTotalHits() > 0);
     }
-    
 
     private WorkflowDef createWorkflowDef(String name, int version) {
         WorkflowDef def = new WorkflowDef();

@@ -195,11 +195,7 @@ public class RestClientManager {
             headers.put(config.getHeaderPrefer(), config.getHeaderPreferValue());
         headers.put("x-request-id", requestId);
 
-        logger.info(
-                "{} notification for id: {} with x-request-id: {}",
-                notifType,
-                id,
-                requestId);
+        logger.info("{} notification for id: {} with x-request-id: {}", notifType, id, requestId);
 
         HttpPost request = createPostRequest(url, data, headers);
         long start = System.currentTimeMillis();

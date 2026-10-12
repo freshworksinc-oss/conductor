@@ -52,7 +52,7 @@ public class MetadataServiceImpl implements MetadataService {
                     "timeoutPolicy",
                     "timeoutSeconds",
                     "restartable",
-                    "workflowStatusListenerEnabled");    
+                    "workflowStatusListenerEnabled");
     private final MetadataDAO metadataDAO;
     private final EventHandlerDAO eventHandlerDAO;
     private final MetadataChangeListener metadataChangeListener;
@@ -272,7 +272,6 @@ public class MetadataServiceImpl implements MetadataService {
         return new SearchResult<>(totalHits, paginatedResults);
     }
 
-    
     @Override
     public SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(
             int start, int size, String filterField, String filterValue) {

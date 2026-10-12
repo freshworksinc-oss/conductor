@@ -131,12 +131,12 @@ public class MetadataResource {
     }
 
     @Operation(
-        summary = "Returns only the latest version of all workflow definitions",
-        description =
-                "Supports optional pagination via start and size parameters. "
-                        + "Supports optional filtering via filterField and filterValue parameters "
-                        + "for case-insensitive substring matching on a specified field. "
-                        + "When no parameters are provided, returns all latest versions wrapped in SearchResult for consistency.")
+            summary = "Returns only the latest version of all workflow definitions",
+            description =
+                    "Supports optional pagination via start and size parameters. "
+                            + "Supports optional filtering via filterField and filterValue parameters "
+                            + "for case-insensitive substring matching on a specified field. "
+                            + "When no parameters are provided, returns all latest versions wrapped in SearchResult for consistency.")
     @GetMapping("/workflow/latest-versions")
     public SearchResult<WorkflowDef> getAllWorkflowsWithLatestVersions(
             @RequestParam(value = "start", required = false) Integer start,

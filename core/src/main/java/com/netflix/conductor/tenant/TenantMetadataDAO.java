@@ -1,18 +1,33 @@
+/*
+ * Copyright 2026 Conductor Authors.
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+ * the License. You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+ * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+ * specific language governing permissions and limitations under the License.
+ */
 package com.netflix.conductor.tenant;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.netflix.conductor.common.metadata.tasks.TaskDef;
-import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
-import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
+
+import javax.sql.DataSource;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.netflix.conductor.common.metadata.tasks.TaskDef;
+import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
+import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class TenantMetadataDAO {
 
@@ -28,25 +43,29 @@ public class TenantMetadataDAO {
 
     /** Get all workflow definitions belonging to the given tenant. */
     public List<WorkflowDef> getWorkflowDefsByTenant(String tenantId) {
-        String sql = "SELECT json_data FROM meta_workflow_def "
-                + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                + "ORDER BY name, version";
+        String sql =
+                "SELECT json_data FROM meta_workflow_def "
+                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                        + "ORDER BY name, version";
         return queryList(sql, tenantId, WorkflowDef.class);
     }
 
     /** Get latest version of each workflow definition for the given tenant. */
     public List<WorkflowDef> getWorkflowDefsLatestVersionsByTenant(String tenantId) {
-        String sql = "SELECT json_data FROM meta_workflow_def "
-                + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                + "AND version = latest_version ORDER BY name";
+        String sql =
+                "SELECT json_data FROM meta_workflow_def "
+                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                        + "AND version = latest_version ORDER BY name";
         return queryList(sql, tenantId, WorkflowDef.class);
     }
 
     /** Get workflow names and versions for the given tenant. */
-    public Map<String, List<WorkflowDefSummary>> getWorkflowNamesAndVersionsByTenant(String tenantId) {
-        String sql = "SELECT json_data FROM meta_workflow_def "
-                + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                + "ORDER BY name, version";
+    public Map<String, List<WorkflowDefSummary>> getWorkflowNamesAndVersionsByTenant(
+            String tenantId) {
+        String sql =
+                "SELECT json_data FROM meta_workflow_def "
+                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                        + "ORDER BY name, version";
         List<WorkflowDef> defs = queryList(sql, tenantId, WorkflowDef.class);
 
         Map<String, List<WorkflowDefSummary>> result = new LinkedHashMap<>();
@@ -63,24 +82,27 @@ public class TenantMetadataDAO {
     /** Get a specific workflow definition by name for the given tenant. */
     public Optional<WorkflowDef> getWorkflowDef(String tenantId, String name, Integer version) {
         if (version != null) {
-            String sql = "SELECT json_data FROM meta_workflow_def "
-                    + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                    + "AND name = ? AND version = ?";
+            String sql =
+                    "SELECT json_data FROM meta_workflow_def "
+                            + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                            + "AND name = ? AND version = ?";
             return querySingleTenantWithVersion(sql, tenantId, name, version, WorkflowDef.class);
         } else {
-            String sql = "SELECT json_data FROM meta_workflow_def "
-                    + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                    + "AND name = ? AND version = latest_version";
+            String sql =
+                    "SELECT json_data FROM meta_workflow_def "
+                            + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                            + "AND name = ? AND version = latest_version";
             return querySingleTenant(sql, tenantId, name, WorkflowDef.class);
         }
     }
 
     /** Get version summaries for a specific workflow name for the given tenant. */
     public List<WorkflowDefSummary> getWorkflowVersionsByTenant(String tenantId, String name) {
-        String sql = "SELECT json_data FROM meta_workflow_def "
-                + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                + "AND name = ? "
-                + "ORDER BY version";
+        String sql =
+                "SELECT json_data FROM meta_workflow_def "
+                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                        + "AND name = ? "
+                        + "ORDER BY version";
         List<WorkflowDef> defs = queryList(sql, tenantId, name, WorkflowDef.class);
         List<WorkflowDefSummary> results = new ArrayList<>();
         for (WorkflowDef def : defs) {
@@ -95,12 +117,13 @@ public class TenantMetadataDAO {
 
     /** Get distinct workflow definition names for the given tenant. */
     public List<String> getWorkflowNamesByTenant(String tenantId) {
-        String sql = "SELECT DISTINCT json_data::jsonb->>'name' AS name FROM meta_workflow_def "
-                + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                + "ORDER BY name";
+        String sql =
+                "SELECT DISTINCT json_data::jsonb->>'name' AS name FROM meta_workflow_def "
+                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                        + "ORDER BY name";
         List<String> results = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, tenantId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -116,17 +139,19 @@ public class TenantMetadataDAO {
 
     /** Get all task definitions belonging to the given tenant. */
     public List<TaskDef> getTaskDefsByTenant(String tenantId) {
-        String sql = "SELECT json_data FROM meta_task_def "
-                + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                + "ORDER BY name";
+        String sql =
+                "SELECT json_data FROM meta_task_def "
+                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                        + "ORDER BY name";
         return queryList(sql, tenantId, TaskDef.class);
     }
 
     /** Get a specific task definition by name for the given tenant. */
     public Optional<TaskDef> getTaskDef(String tenantId, String name) {
-        String sql = "SELECT json_data FROM meta_task_def "
-                + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                + "AND name = ?";
+        String sql =
+                "SELECT json_data FROM meta_task_def "
+                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
+                        + "AND name = ?";
         return querySingleTenant(sql, tenantId, name, TaskDef.class);
     }
 
@@ -135,7 +160,7 @@ public class TenantMetadataDAO {
     private <T> List<T> queryList(String sql, String param1, String param2, Class<T> type) {
         List<T> results = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, param1);
             ps.setString(2, param2);
             try (ResultSet rs = ps.executeQuery()) {
@@ -156,7 +181,7 @@ public class TenantMetadataDAO {
     private <T> List<T> queryList(String sql, String param, Class<T> type) {
         List<T> results = new ArrayList<>();
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, param);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -173,9 +198,10 @@ public class TenantMetadataDAO {
         return results;
     }
 
-    private <T> Optional<T> querySingleTenant(String sql, String tenantId, String name, Class<T> type) {
+    private <T> Optional<T> querySingleTenant(
+            String sql, String tenantId, String name, Class<T> type) {
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, tenantId);
             ps.setString(2, name);
             try (ResultSet rs = ps.executeQuery()) {
@@ -196,7 +222,7 @@ public class TenantMetadataDAO {
     private <T> Optional<T> querySingleTenantWithVersion(
             String sql, String tenantId, String name, int version, Class<T> type) {
         try (Connection conn = dataSource.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+                PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, tenantId);
             ps.setString(2, name);
             ps.setInt(3, version);

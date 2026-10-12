@@ -15,6 +15,7 @@ package com.netflix.conductor.rest.controllers;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +27,7 @@ import com.netflix.conductor.tenant.TenantMetadataDAO;
 
 @RestController
 @RequestMapping("/api/tenant/metadata")
+@ConditionalOnBean(TenantMetadataDAO.class)
 public class TenantMetadataResource {
 
     private final TenantMetadataDAO tenantMetadataDAO;

@@ -104,4 +104,10 @@ RUN chmod +x /app/startup.sh
 HEALTHCHECK --interval=60s --timeout=30s --retries=10 CMD curl -I -XGET http://localhost:8080/health || exit 1
 
 CMD [ "/app/startup.sh" ]
-ENTRYPOINT [ "/bin/sh"]
+# Must be bash, not /bin/sh. On Debian /bin/sh is dash, which silently drops any
+# environment variable whose name is not a valid shell identifier. Deployments
+# inject Spring properties as dotted env vars (for example conductor.db.type),
+# and dash would strip them before java starts, leaving the server on its
+# built-in SQLite defaults. Bash passes such variables through unchanged, which
+# matches the behavior of the previous Alpine (busybox ash) image.
+ENTRYPOINT [ "/bin/bash" ]

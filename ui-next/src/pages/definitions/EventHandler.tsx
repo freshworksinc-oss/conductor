@@ -14,6 +14,7 @@ import {
   TagIcon,
 } from "@phosphor-icons/react";
 import { Button, DataTable, IconButton, NavLink } from "components";
+import RoleGate from "components/tenant/RoleGate";
 import NoDataComponent from "components/ui/NoDataComponent";
 import Paper from "components/ui/Paper";
 import { SnackbarMessage } from "components/ui/SnackbarMessage";
@@ -359,9 +360,16 @@ export default function EventDefinitionList() {
           <SectionHeaderActions
             buttons={[
               {
-                label: "Define event handler",
-                onClick: () => pushHistory(EVENT_HANDLERS_URL.NEW),
-                startIcon: <AddIcon />,
+                customButtonElement: (
+                  <RoleGate minRole="Editor">
+                    <Button
+                      onClick={() => pushHistory(EVENT_HANDLERS_URL.NEW)}
+                      startIcon={<AddIcon />}
+                    >
+                      Define event handler
+                    </Button>
+                  </RoleGate>
+                ),
               },
             ]}
           />

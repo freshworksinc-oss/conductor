@@ -6,6 +6,7 @@ import {
   Tag as TagIcon,
 } from "@phosphor-icons/react";
 import { Button, DataTable, IconButton, NavLink, Paper } from "components";
+import RoleGate from "components/tenant/RoleGate";
 import { ColumnCustomType } from "components/ui/DataTable/types";
 import ConfirmChoiceDialog from "components/ui/dialogs/ConfirmChoiceDialog";
 import Header from "components/ui/Header";
@@ -467,10 +468,17 @@ export default function TaskDefinitions() {
           <SectionHeaderActions
             buttons={[
               {
-                id: "define-task-btn",
-                label: "Define task",
-                onClick: () => pushHistory(NEW_TASK_DEF_URL),
-                startIcon: <AddIcon />,
+                customButtonElement: (
+                  <RoleGate minRole="Editor">
+                    <Button
+                      id="define-task-btn"
+                      onClick={() => pushHistory(NEW_TASK_DEF_URL)}
+                      startIcon={<AddIcon />}
+                    >
+                      Define task
+                    </Button>
+                  </RoleGate>
+                ),
               },
             ]}
           />

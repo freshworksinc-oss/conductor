@@ -111,6 +111,8 @@ export const FEATURES = Object.freeze({
   // the server will silently ignore.
   TASK_STATUS_LISTENER: "TASK_STATUS_LISTENER",
   TASK_RETRY_TIMEOUT_LIMITS: "TASK_RETRY_TIMEOUT_LIMITS",
+  // Freshworks auth-proxy: tenant dropdown + role gates (userinfo + x-tenant-id cookie).
+  TENANT_SELECTION: "TENANT_SELECTION",
 });
 
 const mapOfLocalStorageValues = Object.fromEntries(

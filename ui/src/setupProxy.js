@@ -10,4 +10,11 @@ module.exports = function (app) {
       changeOrigin: true,
     })
   );
+  app.use(
+    "/health",
+    createProxyMiddleware({
+      target: target,
+      changeOrigin: true,
+    })
+  );
 };

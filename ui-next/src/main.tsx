@@ -20,6 +20,7 @@ import {
 import "./monacoLoader";
 import { router } from "./routes/router";
 import "./index.css";
+import { TenantProvider } from "components/tenant";
 import { queryClient } from "./queryClient";
 import { Provider as ThemeProvider } from "./theme/material/provider";
 
@@ -46,9 +47,11 @@ createRoot(document.getElementById("root")!).render(
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <MessageProvider>
-            <CssBaseline />
-            <ReactQueryDevtools initialIsOpen={false} />
-            <RouterProvider router={router} />
+            <TenantProvider>
+              <CssBaseline />
+              <ReactQueryDevtools initialIsOpen={false} />
+              <RouterProvider router={router} />
+            </TenantProvider>
           </MessageProvider>
         </ThemeProvider>
       </QueryClientProvider>

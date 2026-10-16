@@ -12,6 +12,8 @@ import ResetConfirmationDialog from "./ResetConfirmationDialog";
 import SaveTaskDialog from "./SaveTaskDialog";
 import { useTask } from "../../data/task";
 import { usePushHistory } from "../../components/NavLink";
+import RoleGate from "../../components/RoleGate";
+import { useTenant } from "../../components/TenantContext";
 
 const useStyles = makeStyles({
   wrapper: {
@@ -35,6 +37,7 @@ export default function TaskDefinition() {
   const classes = useStyles();
   const match = useRouteMatch();
   const navigate = usePushHistory();
+  const { canAccess } = useTenant();
 
   const [isModified, setIsModified] = useState(false);
   const [jsonErrors, setJsonErrors] = useState([]);
@@ -130,19 +133,21 @@ export default function TaskDefinition() {
           {!_.isEmpty(jsonErrors) && <Pill color="red" label="Validation" />}
 
           <div className={classes.rightButtons}>
-            <Button
-              disabled={!_.isEmpty(jsonErrors) || !isModified}
-              onClick={handleOpenSave}
-            >
-              Save
-            </Button>
-            <Button
-              disabled={!isModified}
-              onClick={() => setResetDialog(true)}
-              variant="secondary"
-            >
-              Reset
-            </Button>
+            <RoleGate minRole="Editor">
+              <Button
+                disabled={!_.isEmpty(jsonErrors) || !isModified}
+                onClick={handleOpenSave}
+              >
+                Save
+              </Button>
+              <Button
+                disabled={!isModified}
+                onClick={() => setResetDialog(true)}
+                variant="secondary"
+              >
+                Reset
+              </Button>
+            </RoleGate>
           </div>
         </Toolbar>
         <Editor
@@ -158,6 +163,7 @@ export default function TaskDefinition() {
           onChange={handleChange}
           options={{
             selectOnLineNumbers: true,
+            readOnly: !canAccess("Editor"),
             minimap: {
               enabled: false,
             },

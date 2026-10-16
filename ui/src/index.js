@@ -9,6 +9,7 @@ import CssBaseline from "@material-ui/core/CssBaseline";
 import { QueryClient, QueryClientProvider } from "react-query";
 import { ReactQueryDevtools } from "react-query/devtools";
 import { getBasename } from "./utils/helpers";
+import { TenantProvider } from "./components/TenantContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,7 +28,9 @@ ReactDOM.render(
         <CssBaseline />
         <ReactQueryDevtools initialIsOpen={true} />
 
-        <App />
+        <TenantProvider>
+          <App />
+        </TenantProvider>
       </BrowserRouter>
     </ThemeProvider>
   </QueryClientProvider>,

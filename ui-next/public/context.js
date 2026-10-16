@@ -47,6 +47,9 @@ window.conductor = {
   CUSTOM_LOGO_URL: "",
   MULTITENANCY_TYPE: "user_based",
   DEFAULT_ROLES: "ADMIN",
+
+  // Freshworks sandbox / auth-proxy: tenant dropdown + role gates (/api/userinfo, x-tenant-id).
+  TENANT_SELECTION: true,
 };
 
 // No authentication configuration for OSS

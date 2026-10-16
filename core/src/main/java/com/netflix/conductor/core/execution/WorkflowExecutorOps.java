@@ -1168,6 +1168,22 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
         }
     }
 
+    private void notifyTaskStatusListenerIfChanged(
+            TaskModel task, TaskModel.Status previousStatus, String workflowId) {
+        if (previousStatus == task.getStatus()) {
+            return;
+        }
+        try {
+            notifyTaskStatusListener(task);
+        } catch (Exception e) {
+            String errorMsg =
+                    String.format(
+                            "Error while notifying TaskStatusListener: %s for workflow: %s",
+                            task.getTaskId(), workflowId);
+            LOGGER.error(errorMsg, e);
+        }
+    }
+
     private void extendLease(TaskResult taskResult) {
         TaskModel task =
                 Optional.ofNullable(executionDAOFacade.getTaskModel(taskResult.getTaskId()))
@@ -1365,6 +1381,7 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                 tasksToBeScheduled = dedupAndAddTasks(workflow, tasksToBeScheduled);
 
                 boolean stateChanged = scheduleTask(workflow, tasksToBeScheduled);
+                List<Map.Entry<TaskModel, TaskModel.Status>> syncExecutedTasks = new ArrayList<>();
 
                 for (TaskModel task : outcome.tasksToBeScheduled) {
                     executionDAOFacade.populateTaskData(task);
@@ -1372,19 +1389,26 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                             && NON_TERMINAL_TASK.test(task)) {
                         WorkflowSystemTask workflowSystemTask =
                                 systemTaskRegistry.get(task.getTaskType());
-                        if (!workflowSystemTask.isAsync()
-                                && executeSyncSystemTaskWithSecrets(
-                                        workflowSystemTask, workflow, task)) {
-                            // Sync system tasks skip the task-update API path, so check here.
-                            validateSystemTaskOutput(task);
-                            tasksToBeUpdated.add(task);
-                            stateChanged = true;
+                        if (!workflowSystemTask.isAsync()) {
+                            TaskModel.Status statusBeforeExecute = task.getStatus();
+                            if (executeSyncSystemTaskWithSecrets(
+                                    workflowSystemTask, workflow, task)) {
+                                // Sync system tasks skip the task-update API path, so check here.
+                                validateSystemTaskOutput(task);
+                                tasksToBeUpdated.add(task);
+                                stateChanged = true;
+                                syncExecutedTasks.add(Map.entry(task, statusBeforeExecute));
+                            }
                         }
                     }
                 }
 
                 if (!outcome.tasksToBeUpdated.isEmpty() || !tasksToBeScheduled.isEmpty()) {
                     executionDAOFacade.updateTasks(tasksToBeUpdated);
+                    for (Map.Entry<TaskModel, TaskModel.Status> entry : syncExecutedTasks) {
+                        notifyTaskStatusListenerIfChanged(
+                                entry.getKey(), entry.getValue(), workflow.getWorkflowId());
+                    }
                 }
 
                 if (stateChanged) {
@@ -1448,6 +1472,26 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
             terminate(workflow, twe);
             return workflow;
         } catch (RuntimeException e) {
+            // Log with full context - exception details included in message for log aggregators
+            String errorDetails =
+                    String.format(
+                            "Error deciding workflow: workflowId=%s, workflowName=%s, version=%d, status=%s, taskCount=%d, correlationId=%s, exceptionType=%s, exceptionMessage=%s",
+                            workflow.getWorkflowId(),
+                            workflow.getWorkflowName(),
+                            workflow.getWorkflowVersion(),
+                            workflow.getStatus(),
+                            workflow.getTasks().size(),
+                            workflow.getCorrelationId(),
+                            e.getClass().getName(),
+                            e.getMessage());
+            LOGGER.error(errorDetails, e);
+
+            // Also log stack trace as string if exception details aren't showing up
+            if (LOGGER.isDebugEnabled()) {
+                LOGGER.debug("Stack trace for workflow {}: ", workflow.getWorkflowId(), e);
+            }
+            Monitors.error(CLASS_NAME, "decide");
+
             LOGGER.error("Error deciding workflow: {}", workflow.getWorkflowId(), e);
             throw e;
         }
@@ -2097,6 +2141,15 @@ public class WorkflowExecutorOps implements WorkflowExecutor {
                     }
                     startedSystemTasks = true;
                     executionDAOFacade.updateTask(task);
+                    try {
+                        notifyTaskStatusListener(task);
+                    } catch (Exception e) {
+                        String errorMsg =
+                                String.format(
+                                        "Error while notifying TaskStatusListener: %s for workflow: %s",
+                                        task.getTaskId(), workflow.getWorkflowId());
+                        LOGGER.error(errorMsg, e);
+                    }
                 } else {
                     tasksToBeQueued.add(task);
                 }

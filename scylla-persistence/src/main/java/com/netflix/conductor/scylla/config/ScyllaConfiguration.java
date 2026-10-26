@@ -30,6 +30,8 @@ import com.netflix.conductor.dao.EventHandlerDAO;
 import com.netflix.conductor.dao.ExecutionDAO;
 import com.netflix.conductor.dao.MetadataDAO;
 import com.netflix.conductor.dao.RateLimitingDAO;
+import org.conductoross.conductor.dao.schema.InMemorySchemaDAO;
+import org.conductoross.conductor.dao.schema.SchemaDAO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -131,5 +133,12 @@ public class ScyllaConfiguration {
     @Bean
     public RateLimitingDAO scyllaRateLimitingDAO() {
         return new ScyllaRateLimitingDAO();
+    }
+
+    // No Scylla-backed schema registry yet. Registered explicitly because InMemorySchemaDAO's own
+    // @Component + @ConditionalOnMissingBean matches itself and never registers. Schemas are lost on restart.
+    @Bean
+    public SchemaDAO scyllaSchemaDAO() {
+        return new InMemorySchemaDAO();
     }
 }

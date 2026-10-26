@@ -92,7 +92,15 @@ public abstract class ScyllaBaseDAO {
     private void init() {
         try {
             if (!initialized) {
-                session.execute(getCreateKeyspaceStatement());
+                // CREATE KEYSPACE needs CREATE on <all keyspaces> even with IF NOT EXISTS, which a
+                // role scoped to a pre-provisioned keyspace (e.g. DBaaS) doesn't have; skip it then.
+                if (session.getCluster().getMetadata().getKeyspace(properties.getKeyspace()) == null) {
+                    session.execute(getCreateKeyspaceStatement());
+                } else {
+                    LOGGER.info(
+                            "Keyspace {} already exists, skipping CREATE KEYSPACE",
+                            properties.getKeyspace());
+                }
                 session.execute(getCreateWorkflowsTableStatement());
                 session.execute(getCreateTaskLookupTableStatement());
                 session.execute(getCreateTaskDefLimitTableStatement());

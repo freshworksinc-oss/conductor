@@ -15,8 +15,10 @@ package com.netflix.conductor.core.execution;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
+import org.conductoross.conductor.service.SchemaService;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -78,7 +80,9 @@ public class HumanTaskScheduleListenerTest {
                         executionLockService,
                         systemTaskRegistry,
                         parametersUtils,
-                        idGenerator);
+                        idGenerator,
+                        Optional.empty(),
+                        mock(SchemaService.class));
     }
 
     @Test

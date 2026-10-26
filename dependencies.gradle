@@ -31,7 +31,7 @@ ext {
     revGuava = '33.2.1-jre'
     revHamcrestAllMatchers = '1.8'
     revHealth = '1.1.4'
-    revPostgres = '42.7.11'
+    revPostgres = '42.7.12'
 
     // -----------------------------------------------------------------
     // PINNED DEPENDENCIES — do not upgrade without reading the notes.
@@ -77,8 +77,8 @@ ext {
     // amqp-client is BOM-managed (rabbit-amqp-client.version); the Spring Boot 3.5 BOM pins 5.25.0,
     // which carries CVE-2026-63337 / CVE-2026-69219 / CVE-2026-69220. 5.35.0 clears all three.
     // The override that actually forces this into the shaded jar lives in springboot-bom-overrides.gradle.
-    revAmqpClient = '5.35.0'
-    revKafka = '3.9.1'
+    revAmqpClient = '5.37.0'
+    revKafka = '3.9.2'
     // micrometer-core carries CVE-2026-40983 / CVE-2026-40984, fixed in 1.15.12.
     revMicrometer = '1.15.12'
     // Registry artifacts (otlp / cloudwatch2 / azure-monitor / prometheus) track revMicrometer.
@@ -112,11 +112,11 @@ ext {
     mongodb = '4.11.0'
     pgVector = '0.1.4'
     sqliteJdbc = '3.49.0.0'
-    revMCP = '1.0.0'
+    revMCP = '1.1.4'
     revCommonsCompress = '1.26.1'
     pinecone = '3.0.0'
     revFlexmark = '0.64.8'
     revOpenTelemetryApi = '1.43.0'
-    revOpenTelemetryJavaagent = '2.14.0'
+    revOpenTelemetryJavaagent = '2.27.0'
     revPyroscope = '0.14.0'
 }

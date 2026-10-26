@@ -18,13 +18,14 @@
 // Keep server runtime dependencies on patched versions until the Spring Boot BOM includes them.
 ext['spring-framework.version'] = '6.2.19'
 ext['spring-security.version'] = '6.5.11'
-ext['log4j2.version'] = '2.25.4'
-ext['netty.version'] = '4.1.136.Final'
+ext['log4j2.version'] = '2.26.1'
+ext['netty.version'] = '4.1.139.Final'
 // Bumps the BOM-managed micrometer family (micrometer-core et al.) to the CVE-patched
 // revMicrometer. The registry artifacts are pinned separately to revMicrometerRegistry in
 // server/build.gradle and must NOT be bumped through this property — see dependencies.gradle.
 ext['micrometer.version'] = revMicrometer
-ext['kafka.version'] = '3.9.1'
+ext['kafka.version'] = '3.9.2'
+ext['mongodb.version'] = '5.11.1'
 // The Spring Boot 3.5 BOM pins com.rabbitmq:amqp-client to 5.25.0, which carries
 // CVE-2026-63337 / CVE-2026-69219 / CVE-2026-69220. This property is what actually forces
 // revAmqpClient (5.35.0) into the shaded jar — the amqp module's explicit version is otherwise

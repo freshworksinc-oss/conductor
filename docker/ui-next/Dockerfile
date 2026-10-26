@@ -39,6 +39,9 @@ RUN corepack enable && \
 FROM nginx:stable-alpine
 LABEL maintainer="Freshworks <search-team@freshworks.com>"
 
+# Apply available Alpine security fixes (nginx, openssl, curl, libx11, ...) on top of the base image.
+RUN apk upgrade --no-cache
+
 # Upstream conductor server for /api and /actuator; override at runtime.
 ENV WF_SERVER=http://conductor-server:8080
 

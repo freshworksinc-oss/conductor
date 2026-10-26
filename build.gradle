@@ -27,7 +27,7 @@ plugins {
 // Establish version and status
 ext.githubProjectName = rootProject.name // Change if github project name is not the same as the root project's name
 
-ext["tomcat.version"] = "10.1.54"
+ext["tomcat.version"] = "10.1.61"
 
 subprojects {
     tasks.withType(Javadoc).all { enabled = false }
@@ -64,7 +64,15 @@ allprojects {
             resolutionStrategy.eachDependency { details ->
                 // Compat: align all com.fasterxml.jackson.* to the same version — mixed versions cause ClassNotFoundException
                 if (details.requested.group.startsWith('com.fasterxml.jackson.')) {
-                    details.useVersion "2.18.8"
+                    details.useVersion "2.18.12"
+                }
+                // Security: Bouncy Castle 1.78.1 is pulled in transitively; align all jdk18on artifacts to 1.85
+                if (details.requested.group == 'org.bouncycastle' && details.requested.name.endsWith('-jdk18on')) {
+                    details.useVersion "1.85"
+                }
+                // Security: jsoup 1.15.4 is pulled in transitively
+                if (details.requested.group == 'org.jsoup' && details.requested.name == 'jsoup') {
+                    details.useVersion "1.23.2"
                 }
                 // Compat: Spring Boot 3.5 requires HttpClient 5.4+ for TlsSocketStrategy.
                 if (details.requested.group == 'org.apache.httpcomponents.client5'

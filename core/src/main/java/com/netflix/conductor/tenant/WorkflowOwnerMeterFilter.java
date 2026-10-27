@@ -29,8 +29,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
-import com.netflix.conductor.contribs.metrics.MetricsCollector;
 import com.netflix.conductor.dao.MetadataDAO;
+import com.netflix.conductor.metrics.MetricsCollector;
 
 import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;

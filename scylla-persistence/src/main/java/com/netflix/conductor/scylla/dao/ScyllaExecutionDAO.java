@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Netflix, Inc.
+ * Copyright 2022 Conductor Authors.
  * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -12,27 +12,43 @@
  */
 package com.netflix.conductor.scylla.dao;
 
-import static com.netflix.conductor.scylla.util.Constants.DEFAULT_TOTAL_PARTITIONS;
-import static com.netflix.conductor.scylla.util.Constants.ENTITY_KEY;
-import static com.netflix.conductor.scylla.util.Constants.ENTITY_TYPE_TASK;
-import static com.netflix.conductor.scylla.util.Constants.ENTITY_TYPE_WORKFLOW;
-import static com.netflix.conductor.scylla.util.Constants.PAYLOAD_KEY;
-import static com.netflix.conductor.scylla.util.Constants.SHARD_ID_KEY;
-import static com.netflix.conductor.scylla.util.Constants.TASK_ID_KEY;
-import static com.netflix.conductor.scylla.util.Constants.TOTAL_PARTITIONS_KEY;
-import static com.netflix.conductor.scylla.util.Constants.TOTAL_TASKS_KEY;
-import static com.netflix.conductor.scylla.util.Constants.VERSION;
-import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_ID_KEY;
-
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.util.CollectionUtils;
+
+import com.netflix.conductor.annotations.Trace;
+import com.netflix.conductor.common.metadata.events.EventExecution;
+import com.netflix.conductor.common.metadata.tasks.TaskDef;
+import com.netflix.conductor.core.exception.NonTransientException;
+import com.netflix.conductor.core.exception.NotFoundException;
+import com.netflix.conductor.core.exception.TransientException;
+import com.netflix.conductor.core.sync.Lock;
+import com.netflix.conductor.dao.ConcurrentExecutionLimitDAO;
+import com.netflix.conductor.dao.ExecutionDAO;
+import com.netflix.conductor.metrics.Monitors;
+import com.netflix.conductor.model.TaskModel;
+import com.netflix.conductor.model.WorkflowModel;
+import com.netflix.conductor.redislock.lock.RedisLock;
+import com.netflix.conductor.scylla.config.ScyllaProperties;
+import com.netflix.conductor.scylla.util.ShardResolver;
+import com.netflix.conductor.scylla.util.ShardResolver.WorkflowOwner;
+import com.netflix.conductor.scylla.util.Statements;
+import com.netflix.conductor.tenant.TenantContext;
 
 import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.PreparedStatement;
@@ -43,27 +59,22 @@ import com.datastax.driver.core.exceptions.DriverException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
-import com.netflix.conductor.annotations.Trace;
-import com.netflix.conductor.common.metadata.events.EventExecution;
-import com.netflix.conductor.common.metadata.tasks.TaskDef;
-import com.netflix.conductor.core.exception.NonTransientException;
-import com.netflix.conductor.core.exception.NotFoundException;
-import com.netflix.conductor.core.exception.TransientException;
-import com.netflix.conductor.dao.ConcurrentExecutionLimitDAO;
-import com.netflix.conductor.dao.ExecutionDAO;
-import com.netflix.conductor.metrics.Monitors;
-import com.netflix.conductor.model.TaskModel;
-import com.netflix.conductor.model.WorkflowModel;
-import com.netflix.conductor.core.sync.Lock;
-import com.netflix.conductor.redislock.lock.RedisLock;
-import com.netflix.conductor.scylla.config.ScyllaProperties;
-import com.netflix.conductor.scylla.util.Statements;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.BeansException;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
-import org.springframework.util.CollectionUtils;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+
+import static com.netflix.conductor.scylla.util.Constants.ACCOUNT_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.DEFAULT_TOTAL_PARTITIONS;
+import static com.netflix.conductor.scylla.util.Constants.ENTITY_KEY;
+import static com.netflix.conductor.scylla.util.Constants.ENTITY_TYPE_TASK;
+import static com.netflix.conductor.scylla.util.Constants.ENTITY_TYPE_WORKFLOW;
+import static com.netflix.conductor.scylla.util.Constants.PAYLOAD_KEY;
+import static com.netflix.conductor.scylla.util.Constants.SHARD_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TASK_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TENANT_ID_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TOTAL_PARTITIONS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.TOTAL_TASKS_KEY;
+import static com.netflix.conductor.scylla.util.Constants.VERSION;
+import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_ID_KEY;
 
 @Trace
 public class ScyllaExecutionDAO extends ScyllaBaseDAO
@@ -93,6 +104,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     protected final PreparedStatement selectWorkflowsByCorIdFromWorkflowStatement;
 
     protected final PreparedStatement selectShardFromWorkflowLookupStatement;
+    protected final PreparedStatement insertWorkflowLookupStatement;
     protected final PreparedStatement updateWorkflowLookupStatement;
     protected final PreparedStatement deleteWorkflowLookupStatement;
     protected final PreparedStatement selectTasksFromTaskDefLimitStatement;
@@ -113,6 +125,13 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
 
     protected final int eventExecutionsTTL;
     private RedisLock redisLock;
+
+    // workflowId -> shard and owner. Both are fixed at creation, so entries never go stale.
+    private final Cache<String, WorkflowOwner> ownerCache =
+            CacheBuilder.newBuilder()
+                    .maximumSize(100_000)
+                    .expireAfterAccess(1, TimeUnit.HOURS)
+                    .build();
 
     private boolean isConcurrencyLimitEnabled;
     private boolean fallbackToOldTaskInProgressActive;
@@ -162,6 +181,10 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         this.selectShardFromWorkflowLookupStatement =
                 session.prepare(statements.getSelectShardFromWorkflowLookupTableStatement())
                         .setConsistencyLevel(properties.getReadConsistencyLevel());
+
+        this.insertWorkflowLookupStatement =
+                session.prepare(statements.getInsertWorkflowLookupStatement())
+                        .setConsistencyLevel(properties.getWriteConsistencyLevel());
 
         this.updateWorkflowLookupStatement =
                 session.prepare(statements.getUpdateWorkflowLookupStatement())
@@ -276,27 +299,37 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     public List<TaskModel> createTasks(List<TaskModel> tasks) {
         validateTasks(tasks);
         String workflowId = tasks.get(0).getWorkflowInstanceId();
-        String corelationId = tasks.get(0).getCorrelationId();
         UUID workflowUUID = toUUID(workflowId, "Invalid workflow id");
-        Integer correlationId = Objects.isNull(corelationId) ? 0 : Integer.parseInt(corelationId);
         try {
-            WorkflowMetadata workflowMetadata = getWorkflowMetadata(workflowId,corelationId);
+            // Tasks live in their workflow's partition, so they take the workflow's stored shard.
+            WorkflowOwner owner = ownerOf(workflowId, tasks.get(0).getCorrelationId());
+            int correlationId = owner.getShardId();
+            if (ownerCache.getIfPresent(workflowId) == null) {
+                // ownerOf caches every workflow that has a lookup row, so this is a legacy workflow
+                // without one: record its shard once.
+                session.execute(updateWorkflowLookupStatement.bind(correlationId, workflowUUID));
+                ownerCache.put(workflowId, owner);
+            }
+            WorkflowMetadata workflowMetadata = getWorkflowMetadata(workflowId, correlationId);
             int totalTasks = workflowMetadata.getTotalTasks() + tasks.size();
             // update the task_lookup table
             // update the workflow_lookup table
-            LOGGER.debug("Create tasks list {} for workflowId {} ",tasks.stream()
-                            .map(TaskModel::getReferenceTaskName).collect(Collectors.toList()),workflowId);
+            LOGGER.debug(
+                    "Create tasks list {} for workflowId {} ",
+                    tasks.stream()
+                            .map(TaskModel::getReferenceTaskName)
+                            .collect(Collectors.toList()),
+                    workflowId);
             tasks.forEach(
                     task -> {
                         if (task.getScheduledTime() == 0) {
                             task.setScheduledTime(System.currentTimeMillis());
                         }
-                        BatchStatement batchStatement = new BatchStatement(BatchStatement.Type.UNLOGGED);
-                        batchStatement.add(updateTaskLookupStatement.bind(
-                                workflowUUID, correlationId, toUUID(task.getTaskId(), "Invalid task id")));
-                        batchStatement.add(updateWorkflowLookupStatement.bind(
-                                correlationId, workflowUUID));
-                        session.execute(batchStatement);
+                        session.execute(
+                                updateTaskLookupStatement.bind(
+                                        workflowUUID,
+                                        correlationId,
+                                        toUUID(task.getTaskId(), "Invalid task id")));
                         // Added the task to task_in_progress table
                         addTaskInProgress(task);
                     });
@@ -321,8 +354,6 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                                 taskPayload.length(),
                                 task.getTaskType(),
                                 task.getWorkflowType());
-
-
                     });
             batchStatement.add(
                     updateTotalTasksStatement.bind(totalTasks, workflowUUID, correlationId));
@@ -345,20 +376,32 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     }
 
     /**
-     * @method to add the task_in_progress table with the status of the task if task is not already present
+     * @method to add the task_in_progress table with the status of the task if task is not already
+     *     present
      */
     public void addTaskInProgress(TaskModel task) {
         ResultSet resultSet = getTaskInProgressTaskFromTaskModel(task);
         if (CollectionUtils.isEmpty(resultSet.all())) {
             if (isFallbackToOldTaskInProgressActive()) {
-                session.execute(insertTaskInProgressStatement.bind(task.getTaskDefName(), UUID.fromString(task.getTaskId()),
-                        UUID.fromString(task.getWorkflowInstanceId()), true));
+                session.execute(
+                        insertTaskInProgressStatement.bind(
+                                task.getTaskDefName(),
+                                UUID.fromString(task.getTaskId()),
+                                UUID.fromString(task.getWorkflowInstanceId()),
+                                true));
             }
-            session.execute(insertTaskInProgressV2Statement.bind(task.getTaskDefName(), UUID.fromString(task.getTaskId()),
-                    UUID.fromString(task.getWorkflowInstanceId()), true));
+            session.execute(
+                    insertTaskInProgressV2Statement.bind(
+                            task.getTaskDefName(),
+                            UUID.fromString(task.getTaskId()),
+                            UUID.fromString(task.getWorkflowInstanceId()),
+                            true));
         } else {
-            LOGGER.info("Task with defName {} and Id {} and status {} in addTaskInProgress NOT inserted as already exists  ", task.getTaskDefName(),
-                    task.getTaskId(), task.getStatus());
+            LOGGER.info(
+                    "Task with defName {} and Id {} and status {} in addTaskInProgress NOT inserted as already exists  ",
+                    task.getTaskDefName(),
+                    task.getTaskId(),
+                    task.getStatus());
         }
     }
 
@@ -370,19 +413,27 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
             }
             return resultSet;
         } catch (Exception ex) {
-            LOGGER.error("Error while reading task from task_in_progress_v2 table - taskDefName: {}, taskId: {}, status: {}",
-                    task.getTaskDefName(), task.getTaskId(), task.getStatus(), ex);
+            LOGGER.error(
+                    "Error while reading task from task_in_progress_v2 table - taskDefName: {}, taskId: {}, status: {}",
+                    task.getTaskDefName(),
+                    task.getTaskId(),
+                    task.getStatus(),
+                    ex);
             return null;
         }
     }
 
     private ResultSet fetchFromTaskInProgressV2Query(TaskModel task) {
-        return session.execute(selectTaskInProgressV2Statement.bind(task.getTaskDefName(), UUID.fromString(task.getTaskId())));
+        return session.execute(
+                selectTaskInProgressV2Statement.bind(
+                        task.getTaskDefName(), UUID.fromString(task.getTaskId())));
     }
 
     private ResultSet fetchFromTaskInProgressQuery(TaskModel task) {
         logTaskInProgressStatus(task);
-        return session.execute(selectTaskInProgressStatement.bind(task.getTaskDefName(), UUID.fromString(task.getTaskId())));
+        return session.execute(
+                selectTaskInProgressStatement.bind(
+                        task.getTaskDefName(), UUID.fromString(task.getTaskId())));
     }
 
     private boolean isResultSetNotValid(ResultSet resultSet) {
@@ -395,16 +446,25 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     public void removeTaskInProgress(TaskModel task) {
         if (isFallbackToOldTaskInProgressActive()) {
             BatchStatement batchStatement = new BatchStatement(BatchStatement.Type.UNLOGGED);
-            batchStatement.add(deleteTaskInProgressV2Statement.bind(task.getTaskDefName(), UUID.fromString(task.getTaskId())));
-            batchStatement.add(deleteTaskInProgressStatement.bind(task.getTaskDefName(), UUID.fromString(task.getTaskId())));
+            batchStatement.add(
+                    deleteTaskInProgressV2Statement.bind(
+                            task.getTaskDefName(), UUID.fromString(task.getTaskId())));
+            batchStatement.add(
+                    deleteTaskInProgressStatement.bind(
+                            task.getTaskDefName(), UUID.fromString(task.getTaskId())));
             session.execute(batchStatement);
         } else {
-            session.execute(deleteTaskInProgressV2Statement.bind(task.getTaskDefName(), UUID.fromString(task.getTaskId())));
+            session.execute(
+                    deleteTaskInProgressV2Statement.bind(
+                            task.getTaskDefName(), UUID.fromString(task.getTaskId())));
         }
     }
 
     private void logTaskInProgressStatus(TaskModel task) {
-        LOGGER.info("Task NOT found in task_in_progress_v2 table - taskDefName {} taskId {} status {}", task.getTaskDefName(), task.getTaskId(),
+        LOGGER.info(
+                "Task NOT found in task_in_progress_v2 table - taskDefName {} taskId {} status {}",
+                task.getTaskDefName(),
+                task.getTaskId(),
                 task.getStatus());
     }
 
@@ -415,41 +475,52 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         if (isFallbackToOldTaskInProgressActive()) {
             BatchStatement batchStatement = new BatchStatement(BatchStatement.Type.UNLOGGED);
             batchStatement.add(
-                    updateTaskInProgressV2Statement.bind(inProgress, task.getTaskDefName(), UUID.fromString(task.getTaskId())));
-            batchStatement.add(updateTaskInProgressStatement.bind(inProgress, task.getTaskDefName(), UUID.fromString(task.getTaskId())));
+                    updateTaskInProgressV2Statement.bind(
+                            inProgress, task.getTaskDefName(), UUID.fromString(task.getTaskId())));
+            batchStatement.add(
+                    updateTaskInProgressStatement.bind(
+                            inProgress, task.getTaskDefName(), UUID.fromString(task.getTaskId())));
             session.execute(batchStatement);
         } else {
-            session.execute(updateTaskInProgressV2Statement.bind(inProgress, task.getTaskDefName(), UUID.fromString(task.getTaskId())));
+            session.execute(
+                    updateTaskInProgressV2Statement.bind(
+                            inProgress, task.getTaskDefName(), UUID.fromString(task.getTaskId())));
         }
     }
 
     @Override
     public void updateTask(TaskModel task) {
         try {
-            Integer correlationId = Objects.isNull(task.getCorrelationId()) ? 0 : Integer.parseInt(task.getCorrelationId());
+            int correlationId =
+                    ownerOf(task.getWorkflowInstanceId(), task.getCorrelationId()).getShardId();
             String taskPayload = toJson(task);
             recordCassandraDaoRequests("updateTask", task.getTaskType(), task.getWorkflowType());
             recordCassandraDaoPayloadSize(
                     "updateTask", taskPayload.length(), task.getTaskType(), task.getWorkflowType());
             if (redisLock.acquireLock(task.getTaskId(), 2, TimeUnit.SECONDS)) {
                 /**
-                 * commenting this block of code as its no longer required as we already have a redis based distributed locking,
-                 * which can now handle dirty read write.
-                 * TaskModel prevTask = getTask(task.getTaskId());
-                LOGGER.debug("Received updateTask for task {} with taskStatus {} in workflow {} with taskRefName {} and prevTaskStatus {} ",
-                        task.getTaskId(), task.getStatus(), task.getWorkflowInstanceId(), task.getReferenceTaskName(),
-                        prevTask.getStatus());
-
-                if (!prevTask.getStatus().equals(TaskModel.Status.COMPLETED)) {**/
-                    session.execute(
-                            insertTaskStatement.bind(
-                                    UUID.fromString(task.getWorkflowInstanceId()),
-                                    correlationId,
-                                    task.getTaskId(),
-                                    taskPayload));
-                    LOGGER.debug("Updated updateTask for task {} with taskStatus {}  with taskRefName {} for workflowId {} ",
-                            task.getTaskId(), task.getStatus(), task.getReferenceTaskName(), task.getWorkflowInstanceId());
-                //}
+                 * commenting this block of code as its no longer required as we already have a
+                 * redis based distributed locking, which can now handle dirty read write. TaskModel
+                 * prevTask = getTask(task.getTaskId()); LOGGER.debug("Received updateTask for task
+                 * {} with taskStatus {} in workflow {} with taskRefName {} and prevTaskStatus {} ",
+                 * task.getTaskId(), task.getStatus(), task.getWorkflowInstanceId(),
+                 * task.getReferenceTaskName(), prevTask.getStatus());
+                 *
+                 * <p>if (!prevTask.getStatus().equals(TaskModel.Status.COMPLETED)) {*
+                 */
+                session.execute(
+                        insertTaskStatement.bind(
+                                UUID.fromString(task.getWorkflowInstanceId()),
+                                correlationId,
+                                task.getTaskId(),
+                                taskPayload));
+                LOGGER.debug(
+                        "Updated updateTask for task {} with taskStatus {}  with taskRefName {} for workflowId {} ",
+                        task.getTaskId(),
+                        task.getStatus(),
+                        task.getReferenceTaskName(),
+                        task.getWorkflowInstanceId());
+                // }
                 verifyTaskStatus(task);
             }
             redisLock.releaseLock(task.getTaskId());
@@ -466,24 +537,27 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     }
 
     private void logErrorToDebug(String mName, DriverException e) {
-        LOGGER.error("Error in ScyllaExecutionDAO method - {} message - {} stackTrace- {}", mName, e.getMessage(), e.getStackTrace());
+        LOGGER.error(
+                "Error in ScyllaExecutionDAO method - {} message - {} stackTrace- {}",
+                mName,
+                e.getMessage(),
+                e.getStackTrace());
     }
 
     /**
-     *  @method to verify the task status and update the task_in_progress table
-     *  also removes if its a terminal task
+     * @method to verify the task status and update the task_in_progress table also removes if its a
+     *     terminal task
      */
     private void verifyTaskStatus(TaskModel task) {
         boolean inProgress =
-                task.getStatus() != null
-                        && task.getStatus().equals(TaskModel.Status.IN_PROGRESS);
-            updateTaskInProgress( task,  inProgress);
-            if (task.getStatus().isTerminal()) {
-                removeTaskFromLimit(task);
-                removeTaskInProgress(task);
-            } else if (task.getStatus() == TaskModel.Status.IN_PROGRESS) {
-                addTaskToLimit(task);
-            }
+                task.getStatus() != null && task.getStatus().equals(TaskModel.Status.IN_PROGRESS);
+        updateTaskInProgress(task, inProgress);
+        if (task.getStatus().isTerminal()) {
+            removeTaskFromLimit(task);
+            removeTaskInProgress(task);
+        } else if (task.getStatus() == TaskModel.Status.IN_PROGRESS) {
+            addTaskToLimit(task);
+        }
     }
 
     /**
@@ -552,7 +626,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     // Not part of the Freshworks ExecutionDAO interface (Journeys-only overload)
     public TaskModel getTask(String shardId, String workflowId, String taskId) {
         try {
-            return getTaskModel(shardId, taskId, workflowId);
+            return getTaskModel(ShardResolver.legacyShard(shardId), taskId, workflowId);
         } catch (DriverException e) {
             Monitors.error(CLASS_NAME, "getTask");
             logErrorToDebug(Thread.currentThread().getStackTrace()[2].getMethodName(), e);
@@ -567,7 +641,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         try {
             String workflowId = lookupWorkflowIdFromTaskId(taskId);
             String shardId = lookupShardIdFromTaskId(taskId);
-            return getTaskModel(shardId, taskId, workflowId);
+            return getTaskModel(ShardResolver.legacyShard(shardId), taskId, workflowId);
         } catch (DriverException e) {
             Monitors.error(CLASS_NAME, "getTask");
             logErrorToDebug(Thread.currentThread().getStackTrace()[2].getMethodName(), e);
@@ -577,8 +651,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         }
     }
 
-    private TaskModel getTaskModel(String shardId, String taskId, String workflowId) {
-        Integer correlationId = Objects.isNull(shardId) ? 0 : Integer.parseInt(shardId);
+    private TaskModel getTaskModel(int correlationId, String taskId, String workflowId) {
         if (workflowId == null) {
             return null;
         }
@@ -591,6 +664,15 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         return Optional.ofNullable(resultSet.one())
                 .map(
                         row -> {
+                            // The partition's static owner columns come back with the task row.
+                            if (!callerOwns(
+                                    row.getString(TENANT_ID_KEY), row.getString(ACCOUNT_ID_KEY))) {
+                                LOGGER.info(
+                                        "Task {} is not visible to {}",
+                                        taskId,
+                                        TenantContext.get());
+                                return null;
+                            }
                             String taskRow = row.getString(PAYLOAD_KEY);
                             TaskModel task = readValue(taskRow, TaskModel.class);
                             recordCassandraDaoRequests(
@@ -613,7 +695,11 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         if (workflowId == null) {
             return null;
         }
-        return getWorkflow(workflowId, true).getTasks().stream()
+        WorkflowModel workflow = getWorkflow(workflowId, true);
+        if (workflow == null) {
+            return new ArrayList<>();
+        }
+        return workflow.getTasks().stream()
                 .filter(task -> taskIds.contains(task.getTaskId()))
                 .collect(Collectors.toList());
     }
@@ -630,7 +716,8 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
 
     @Override
     public List<TaskModel> getTasksForWorkflow(String workflowId) {
-        return getWorkflow(workflowId, true).getTasks();
+        WorkflowModel workflow = getWorkflow(workflowId, true);
+        return workflow == null ? new ArrayList<>() : workflow.getTasks();
     }
 
     @Override
@@ -639,17 +726,32 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
             List<TaskModel> tasks = workflow.getTasks();
             workflow.setTasks(new LinkedList<>());
             String payload = toJson(workflow);
-            Integer correlationId = Objects.isNull(workflow.getCorrelationId()) ? 0 : Integer.parseInt(workflow.getCorrelationId());
-            LOGGER.info(
-                    "Correlation ID for workflow {} is {}",
-                    workflow.getWorkflowId(),
-                    correlationId);
+            // The only place a shard is decided; everything after reads the stored value.
+            WorkflowOwner owner = resolveOwner(workflow);
+            UUID workflowUUID = UUID.fromString(workflow.getWorkflowId());
+            LOGGER.info("Workflow {} owner {}", workflow.getWorkflowId(), owner);
             recordCassandraDaoRequests("createWorkflow", "n/a", workflow.getWorkflowName());
             recordCassandraDaoPayloadSize(
                     "createWorkflow", payload.length(), "n/a", workflow.getWorkflowName());
+            // Lookup first, so a reader that finds the workflow can always find its shard.
+            session.execute(
+                    insertWorkflowLookupStatement.bind(
+                            workflowUUID,
+                            owner.getShardId(),
+                            owner.getTenantId(),
+                            owner.getAccountId()));
             session.execute(
                     insertWorkflowStatement.bind(
-                            UUID.fromString(workflow.getWorkflowId()), correlationId, "", payload, 0, 1,1));
+                            workflowUUID,
+                            owner.getShardId(),
+                            "",
+                            payload,
+                            0,
+                            1,
+                            1,
+                            owner.getTenantId(),
+                            owner.getAccountId()));
+            ownerCache.put(workflow.getWorkflowId(), owner);
 
             workflow.setTasks(tasks);
             return workflow.getWorkflowId();
@@ -667,19 +769,29 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     public String updateWorkflow(WorkflowModel workflow) {
         try {
             List<TaskModel> tasks = workflow.getTasks();
-            Integer correlationId = Objects.isNull(workflow.getCorrelationId()) ? 0 : Integer.parseInt(workflow.getCorrelationId());
+            int correlationId =
+                    ownerOf(workflow.getWorkflowId(), workflow.getCorrelationId()).getShardId();
             workflow.setTasks(new LinkedList<>());
 
-            WorkflowModel prevWorkflow = getWorkflow(workflow.getCorrelationId(), workflow.getWorkflowId(), false);
-            LOGGER.debug("Update workflow - getPrevious workflow status {} - current Status {} for workflowId {} and prevVersion {} ",
+            WorkflowModel prevWorkflow =
+                    readWorkflow(
+                                    workflow.getWorkflowId(),
+                                    false,
+                                    UUID.fromString(workflow.getWorkflowId()),
+                                    correlationId)
+                            .workflow();
+            LOGGER.debug(
+                    "Update workflow - getPrevious workflow status {} - current Status {} for workflowId {} and prevVersion {} ",
                     prevWorkflow.getStatus(),
                     workflow.getStatus(),
-                    prevWorkflow.getWorkflowId(), prevWorkflow.getVersion());
+                    prevWorkflow.getWorkflowId(),
+                    prevWorkflow.getVersion());
 
             String payload = toJson(workflow);
 
             if (!prevWorkflow.getStatus().equals(WorkflowModel.Status.COMPLETED)) {
-                if (attemptUpdateWorkflow(workflow, prevWorkflow, payload, correlationId, Boolean.FALSE)) {
+                if (attemptUpdateWorkflow(
+                        workflow, prevWorkflow, payload, correlationId, Boolean.FALSE)) {
                     workflow.setTasks(tasks);
                 } else {
                     handleConcurrentUpdate(workflow, tasks, payload, correlationId);
@@ -689,33 +801,59 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         } catch (DriverException e) {
             logErrorToDebug(Thread.currentThread().getStackTrace()[2].getMethodName(), e);
             handleError(workflow, e, "updateWorkflow");
-            throw new TransientException("Failed to update workflow: " + workflow.getWorkflowId(), e);
+            throw new TransientException(
+                    "Failed to update workflow: " + workflow.getWorkflowId(), e);
         }
     }
 
-    private boolean attemptUpdateWorkflow(WorkflowModel workflow, WorkflowModel prevWorkflow,  String payload, Integer correlationId, Boolean isRetry) {
+    private boolean attemptUpdateWorkflow(
+            WorkflowModel workflow,
+            WorkflowModel prevWorkflow,
+            String payload,
+            Integer correlationId,
+            Boolean isRetry) {
         Integer currentVersion = prevWorkflow.getVersion() == 0 ? null : prevWorkflow.getVersion();
-        ResultSet resultSet = session.execute(updateWorkflowStatement.bind(payload, prevWorkflow.getVersion() + 1,
-                UUID.fromString(workflow.getWorkflowId()), correlationId, currentVersion));
+        ResultSet resultSet =
+                session.execute(
+                        updateWorkflowStatement.bind(
+                                payload,
+                                prevWorkflow.getVersion() + 1,
+                                UUID.fromString(workflow.getWorkflowId()),
+                                correlationId,
+                                currentVersion));
         if (resultSet.wasApplied()) {
-            LOGGER.debug("Updated workflow with isRetry {} - current status {} for workflowId {} with version {}",
-                    isRetry, workflow.getStatus(), workflow.getWorkflowId(), prevWorkflow.getVersion() + 1);
+            LOGGER.debug(
+                    "Updated workflow with isRetry {} - current status {} for workflowId {} with version {}",
+                    isRetry,
+                    workflow.getStatus(),
+                    workflow.getWorkflowId(),
+                    prevWorkflow.getVersion() + 1);
             return true;
         }
         return false;
     }
 
-
-    private void handleConcurrentUpdate(WorkflowModel workflow, List<TaskModel> tasks, String payload, Integer correlationId) {
-        LOGGER.info("Concurrent update detected, update failed for workflow: {} retrying..", workflow.getWorkflowId());
-        WorkflowModel retriedWorkflow = getWorkflow(String.valueOf(correlationId), workflow.getWorkflowId());
+    private void handleConcurrentUpdate(
+            WorkflowModel workflow, List<TaskModel> tasks, String payload, Integer correlationId) {
+        LOGGER.info(
+                "Concurrent update detected, update failed for workflow: {} retrying..",
+                workflow.getWorkflowId());
+        WorkflowModel retriedWorkflow =
+                readWorkflow(
+                                workflow.getWorkflowId(),
+                                false,
+                                UUID.fromString(workflow.getWorkflowId()),
+                                correlationId)
+                        .workflow();
 
         if (!retriedWorkflow.getStatus().equals(WorkflowModel.Status.COMPLETED)) {
             if (attemptUpdateWorkflow(workflow, retriedWorkflow, payload, correlationId, true)) {
                 workflow.setTasks(tasks);
             } else {
-                LOGGER.info("Concurrent update retriedVersion detected, update failed for workflow: {} with version {}",
-                        workflow.getWorkflowId(), retriedWorkflow.getVersion());
+                LOGGER.info(
+                        "Concurrent update retriedVersion detected, update failed for workflow: {} with version {}",
+                        workflow.getWorkflowId(),
+                        retriedWorkflow.getVersion());
             }
         }
     }
@@ -726,13 +864,13 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         LOGGER.error(errorMsg, e);
     }
 
-
     @Override
     public boolean removeWorkflow(String workflowId) {
+        // Ownership-checked read: a caller that doesn't own the workflow removes nothing.
         WorkflowModel workflow = getWorkflow(workflowId, true);
-        Integer correlationId = Objects.isNull(workflow.getCorrelationId()) ? 0 : Integer.parseInt(workflow.getCorrelationId());
         boolean removed = false;
         if (workflow != null) {
+            int correlationId = ownerOf(workflowId, workflow.getCorrelationId()).getShardId();
             try {
                 recordCassandraDaoRequests("removeWorkflow", "n/a", workflow.getWorkflowName());
                 ResultSet resultSet =
@@ -748,6 +886,15 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                 throw new TransientException(errorMsg);
             }
             workflow.getTasks().forEach(this::removeTaskLookup);
+            try {
+                session.execute(deleteWorkflowLookupStatement.bind(UUID.fromString(workflowId)));
+            } catch (DriverException e) {
+                Monitors.error(CLASS_NAME, "removeWorkflow");
+                String errorMsg = String.format("Failed to remove workflow lookup: %s", workflowId);
+                LOGGER.error(errorMsg, e);
+                throw new TransientException(errorMsg);
+            }
+            ownerCache.invalidate(workflowId);
         }
         return removed;
     }
@@ -763,14 +910,12 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     }
 
     /**
-     * This is a dummy implementation and this feature is not implemented for Cassandra backed
-     * Conductor
+     * No-op: Scylla keeps no pending-workflows table, so there is nothing to remove. Conductor
+     * calls this on every terminate; throwing here made terminate return 500 after the workflow
+     * was already terminated.
      */
     @Override
-    public void removeFromPendingWorkflow(String workflowType, String workflowId) {
-        throw new UnsupportedOperationException(
-                "This method is not implemented in ScyllaExecutionDAO. Please use ExecutionDAOFacade instead.");
-    }
+    public void removeFromPendingWorkflow(String workflowType, String workflowId) {}
 
     @Override
     public WorkflowModel getWorkflow(String workflowId) {
@@ -784,36 +929,65 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     // Not part of the Freshworks ExecutionDAO interface (Journeys-only overload)
     public WorkflowModel getWorkflow(String shardId, String workflowId, boolean includeTasks) {
         UUID workflowUUID = toUUID(workflowId, "Invalid workflow id");
-        Integer correlationId = Objects.isNull(shardId) ? 0 : Integer.parseInt(shardId);
-
-        return getWorkflowModel(workflowId, includeTasks, workflowUUID, correlationId);
+        // Shard hint: read the partition directly and check its static owner. A wrong hint lands on
+        // an
+        // empty partition, so fall back to workflow_lookup (which also does the owner check).
+        OwnedWorkflow read =
+                readWorkflow(
+                        workflowId, includeTasks, workflowUUID, ShardResolver.legacyShard(shardId));
+        if (read.workflow() == null) {
+            return getWorkflow(workflowId, includeTasks);
+        }
+        return visibleOrNull(read.workflow(), read.tenantId(), read.accountId());
     }
 
     @Override
     public WorkflowModel getWorkflow(String workflowId, boolean includeTasks) {
         UUID workflowUUID = toUUID(workflowId, "Invalid workflow id");
-        String shardId = lookupShardIdFromWorkflowId(workflowId);
-        Integer correlationId = Objects.isNull(shardId) ? 0 : Integer.parseInt(shardId);
-
-        return getWorkflowModel(workflowId, includeTasks, workflowUUID, correlationId);
+        WorkflowOwner owner = ownerOf(workflowId, null);
+        OwnedWorkflow read =
+                readWorkflow(workflowId, includeTasks, workflowUUID, owner.getShardId());
+        if (read.workflow() == null) {
+            return null;
+        }
+        String tenant = owner.getTenantId() != null ? owner.getTenantId() : read.tenantId();
+        String account = owner.getTenantId() != null ? owner.getAccountId() : read.accountId();
+        return visibleOrNull(read.workflow(), tenant, account);
     }
 
-    private WorkflowModel getWorkflowModel(String workflowId, boolean includeTasks, UUID workflowUUID, Integer correlationId) {
+    private WorkflowModel visibleOrNull(
+            WorkflowModel workflow, String ownerTenant, String ownerAccount) {
+        if (callerOwns(ownerTenant, ownerAccount)) {
+            return workflow;
+        }
+        LOGGER.info(
+                "Workflow {} is not visible to {}", workflow.getWorkflowId(), TenantContext.get());
+        return null;
+    }
+
+    /** Workflow row plus the partition's static owner columns; no ownership check. */
+    private record OwnedWorkflow(WorkflowModel workflow, String tenantId, String accountId) {}
+
+    private OwnedWorkflow readWorkflow(
+            String workflowId, boolean includeTasks, UUID workflowUUID, int correlationId) {
         try {
             WorkflowModel workflow = null;
+            String tenantId = null;
+            String accountId = null;
             ResultSet resultSet;
             if (includeTasks) {
                 resultSet =
                         session.execute(
-                                selectWorkflowWithTasksStatement.bind(
-                                        workflowUUID, correlationId));
+                                selectWorkflowWithTasksStatement.bind(workflowUUID, correlationId));
                 List<TaskModel> tasks = new ArrayList<>();
 
                 List<Row> rows = resultSet.all();
                 if (rows.size() == 0) {
                     LOGGER.info("Workflow {} not found in datastore", workflowId);
-                    return null;
+                    return new OwnedWorkflow(null, null, null);
                 }
+                tenantId = rows.get(0).getString(TENANT_ID_KEY);
+                accountId = rows.get(0).getString(ACCOUNT_ID_KEY);
                 for (Row row : rows) {
                     String entityKey = row.getString(ENTITY_KEY);
                     if (ENTITY_TYPE_WORKFLOW.equals(entityKey)) {
@@ -837,9 +1011,15 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                     workflow.setTasks(tasks);
                 }
             } else {
-                resultSet = session.execute(selectWorkflowStatement.bind(workflowUUID, correlationId));
+                resultSet =
+                        session.execute(selectWorkflowStatement.bind(workflowUUID, correlationId));
+                Row workflowRow = resultSet.one();
+                if (workflowRow != null) {
+                    tenantId = workflowRow.getString(TENANT_ID_KEY);
+                    accountId = workflowRow.getString(ACCOUNT_ID_KEY);
+                }
                 workflow =
-                        Optional.ofNullable(resultSet.one())
+                        Optional.ofNullable(workflowRow)
                                 .map(
                                         row -> {
                                             WorkflowModel wf =
@@ -854,7 +1034,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                                         })
                                 .orElse(null);
             }
-            return workflow;
+            return new OwnedWorkflow(workflow, tenantId, accountId);
         } catch (DriverException e) {
             Monitors.error(CLASS_NAME, "getWorkflow");
             logErrorToDebug(Thread.currentThread().getStackTrace()[2].getMethodName(), e);
@@ -913,41 +1093,52 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                 "This method is not implemented in ScyllaExecutionDAO. Please use ExecutionDAOFacade instead.");
     }
 
-    /**
-     * This is to get the list of workflows based on correlationId.
-     */
+    /** This is to get the list of workflows based on correlationId. */
     @Override
     public List<WorkflowModel> getWorkflowsByCorrelationId(
             String workflowName, String correlationId, boolean includeTasks) {
-        try{
+        try {
             recordCassandraDaoRequests("getWorkflowsByCorrelationId", "n/a", correlationId);
 
-            ResultSet resultSet = session.execute(selectWorkflowsByCorIdFromWorkflowStatement.bind(Integer.parseInt(correlationId)));
-            List<WorkflowModel> wfList = resultSet.all().stream()
-                    .map(row -> {
-                        WorkflowModel wf =
-                                readValue(
-                                        row.getString(PAYLOAD_KEY),
-                                        WorkflowModel.class);
-                        recordCassandraDaoRequests(
-                                "getWorkflowsByCorrelationId", "n/a", wf.getWorkflowName());
-                        return wf;
-                    })
-                    .collect(Collectors.toList());
-        return wfList;
+            ResultSet resultSet =
+                    session.execute(
+                            selectWorkflowsByCorIdFromWorkflowStatement.bind(
+                                    ShardResolver.legacyShard(correlationId)));
+            List<WorkflowModel> wfList =
+                    resultSet.all().stream()
+                            .map(
+                                    row -> {
+                                        WorkflowModel wf =
+                                                readValue(
+                                                        row.getString(PAYLOAD_KEY),
+                                                        WorkflowModel.class);
+                                        recordCassandraDaoRequests(
+                                                "getWorkflowsByCorrelationId",
+                                                "n/a",
+                                                wf.getWorkflowName());
+                                        return wf;
+                                    })
+                            .collect(Collectors.toList());
+            return wfList;
         } catch (DriverException e) {
             Monitors.error(CLASS_NAME, "getWorkflowsByCorrelationId");
             logErrorToDebug(Thread.currentThread().getStackTrace()[2].getMethodName(), e);
             String errorMsg =
-                    String.format("Failed to retrieve workflows from correlationId: %s", correlationId);
+                    String.format(
+                            "Failed to retrieve workflows from correlationId: %s", correlationId);
             LOGGER.error(errorMsg, e);
             throw new TransientException(errorMsg);
         }
     }
 
+    /**
+     * false: ExecutionDAOFacade then resolves correlated workflows through the index (tenant-scoped
+     * by the proxy's correlationId prefix) instead of getWorkflowsByCorrelationId, which scans the
+     * table with ALLOW FILTERING and can't match non-numeric correlationIds.
+     */
     @Override
     public boolean canSearchAcrossWorkflows() {
-        return true;
+        return false;
     }
 
     @Override
@@ -1096,9 +1287,10 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         // TODO: calculate shard number based on seq and maxTasksPerShard
         try {
             // get total tasks for this workflow
-            WorkflowMetadata workflowMetadata = getWorkflowMetadata(task.getWorkflowInstanceId(),
-                    task.getCorrelationId());
-            Integer correlationId = Objects.isNull(task.getCorrelationId()) ? 0 : Integer.parseInt(task.getCorrelationId());
+            int correlationId =
+                    ownerOf(task.getWorkflowInstanceId(), task.getCorrelationId()).getShardId();
+            WorkflowMetadata workflowMetadata =
+                    getWorkflowMetadata(task.getWorkflowInstanceId(), correlationId);
             int totalTasks = workflowMetadata.getTotalTasks();
 
             // remove from task_lookup table
@@ -1143,8 +1335,9 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                     && task.getTaskDefinition().get().concurrencyLimit() > 0) {
                 removeTaskFromLimit(task);
             }
+            // workflow_lookup holds the workflow's shard and owner, so it is only deleted with the
+            // workflow (removeWorkflow), never with a single task.
             session.execute(deleteTaskLookupStatement.bind(UUID.fromString(task.getTaskId())));
-            session.execute(deleteWorkflowLookupStatement.bind(UUID.fromString(task.getWorkflowInstanceId())));
         } catch (DriverException e) {
             Monitors.error(CLASS_NAME, "removeTaskLookup");
             logErrorToDebug(Thread.currentThread().getStackTrace()[2].getMethodName(), e);
@@ -1180,10 +1373,10 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     }
 
     @VisibleForTesting
-    WorkflowMetadata getWorkflowMetadata(String workflowId, String correlationId) {
-        Integer corelId = Objects.isNull(correlationId) ? 0 : Integer.parseInt(correlationId);
+    WorkflowMetadata getWorkflowMetadata(String workflowId, int correlationId) {
         ResultSet resultSet =
-                session.execute(selectTotalStatement.bind(UUID.fromString(workflowId),corelId));
+                session.execute(
+                        selectTotalStatement.bind(UUID.fromString(workflowId), correlationId));
         recordCassandraDaoRequests("getWorkflowMetadata");
         return Optional.ofNullable(resultSet.one())
                 .map(
@@ -1224,7 +1417,8 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     String lookupShardIdFromTaskId(String taskId) {
         UUID taskUUID = toUUID(taskId, "Invalid task id");
         try {
-            ResultSet resultSet = session.execute(selectShardFromTaskLookupStatement.bind(taskUUID));
+            ResultSet resultSet =
+                    session.execute(selectShardFromTaskLookupStatement.bind(taskUUID));
             return Optional.ofNullable(resultSet.one())
                     .map(row -> String.valueOf(row.getInt(SHARD_ID_KEY)))
                     .orElse(null);
@@ -1238,26 +1432,90 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     }
 
     /**
-     * @return method to get the shardId from workflow_lookup table for shard_mapping
+     * @return shard and owner from the workflow_lookup row, or null when there is none
      */
     @VisibleForTesting
-    String lookupShardIdFromWorkflowId(String workflowId) {
+    WorkflowOwner lookupOwnerFromWorkflowId(String workflowId) {
         UUID workflowUUID = toUUID(workflowId, "Invalid workflow id");
         try {
-            ResultSet resultSet = session.execute(selectShardFromWorkflowLookupStatement.bind(workflowUUID));
+            ResultSet resultSet =
+                    session.execute(selectShardFromWorkflowLookupStatement.bind(workflowUUID));
 
             return Optional.ofNullable(resultSet.one())
-                    .map(row -> {
-                        return String.valueOf(row.getInt(SHARD_ID_KEY));
-                    })
+                    .map(
+                            row ->
+                                    new WorkflowOwner(
+                                            row.getInt(SHARD_ID_KEY),
+                                            row.getString(TENANT_ID_KEY),
+                                            row.getString(ACCOUNT_ID_KEY)))
                     .orElse(null);
         } catch (DriverException e) {
             Monitors.error(CLASS_NAME, "lookupShardIdFromWorkflowId");
             logErrorToDebug(Thread.currentThread().getStackTrace()[2].getMethodName(), e);
-            String errorMsg = String.format("Failed to lookup shardId from workflowId: %s", workflowId);
+            String errorMsg =
+                    String.format("Failed to lookup shardId from workflowId: %s", workflowId);
             LOGGER.error(errorMsg, e);
             throw new TransientException(errorMsg, e);
         }
+    }
+
+    /**
+     * Shard and owner of a workflow: cache, then workflow_lookup. A workflow with no lookup row was
+     * written by the old code; it falls back to the old rule (numeric correlationId, else 0) and is
+     * not cached, so a later lookup row is still picked up.
+     */
+    WorkflowOwner ownerOf(String workflowId, String legacyCorrelationId) {
+        WorkflowOwner cached = ownerCache.getIfPresent(workflowId);
+        if (cached != null) {
+            return cached;
+        }
+        WorkflowOwner owner = lookupOwnerFromWorkflowId(workflowId);
+        if (owner == null) {
+            return new WorkflowOwner(ShardResolver.legacyShard(legacyCorrelationId), null, null);
+        }
+        ownerCache.put(workflowId, owner);
+        return owner;
+    }
+
+    /**
+     * Owner of a new workflow: the caller's headers, else the parent workflow's owner
+     * (sub-workflows), else input._tenantContext, else conductor.scylla.default-tenant. With no
+     * tenant at all the workflow gets no owner and the legacy shard, as before.
+     */
+    private WorkflowOwner resolveOwner(WorkflowModel workflow) {
+        String tenantId = null;
+        String accountId = null;
+        TenantContext context = TenantContext.get();
+        if (context != null) {
+            tenantId = context.getTenantId();
+            accountId = context.getAccountId();
+        } else if (StringUtils.isNotBlank(workflow.getParentWorkflowId())) {
+            WorkflowOwner parent = ownerOf(workflow.getParentWorkflowId(), null);
+            tenantId = parent.getTenantId();
+            accountId = parent.getAccountId();
+        }
+        if (StringUtils.isBlank(tenantId)) {
+            Object tenantContext =
+                    workflow.getInput() == null ? null : workflow.getInput().get("_tenantContext");
+            if (tenantContext instanceof Map<?, ?> map) {
+                tenantId = Objects.toString(map.get("tenantID"), null);
+                accountId = Objects.toString(map.get("accountID"), null);
+            }
+        }
+        if (StringUtils.isBlank(tenantId)) {
+            tenantId = properties.getDefaultTenant();
+        }
+        if (StringUtils.isBlank(tenantId)) {
+            return new WorkflowOwner(
+                    ShardResolver.legacyShard(workflow.getCorrelationId()), null, null);
+        }
+        return ShardResolver.resolve(tenantId.trim(), accountId, workflow.getCorrelationId());
+    }
+
+    /** No caller context (internal work, or a request without X-Tenant-ID) is trusted. */
+    private static boolean callerOwns(String ownerTenant, String ownerAccount) {
+        TenantContext context = TenantContext.get();
+        return context == null || context.owns(ownerTenant, ownerAccount);
     }
 
     public boolean isConcurrencyLimitEnabled() {
@@ -1281,7 +1539,15 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         // Freshworks redis-lock registers the bean as "provideLock" with declared type Lock, so a
         // by-type lookup for RedisLock fails until it is instantiated; resolve via Lock and cast.
         this.redisLock = (RedisLock) applicationContext.getBean(Lock.class);
-        setConcurrencyLimitEnabled(Boolean.parseBoolean(applicationContext.getEnvironment().getProperty("concurrencyLimitEnabled", "false")));
-        setFallbackToOldTaskInProgressActive(Boolean.parseBoolean(applicationContext.getEnvironment().getProperty("fallbackToOldTaskInProgressActive", "false")));
+        setConcurrencyLimitEnabled(
+                Boolean.parseBoolean(
+                        applicationContext
+                                .getEnvironment()
+                                .getProperty("concurrencyLimitEnabled", "false")));
+        setFallbackToOldTaskInProgressActive(
+                Boolean.parseBoolean(
+                        applicationContext
+                                .getEnvironment()
+                                .getProperty("fallbackToOldTaskInProgressActive", "false")));
     }
 }

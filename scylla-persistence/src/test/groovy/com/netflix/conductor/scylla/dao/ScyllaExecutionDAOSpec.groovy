@@ -159,7 +159,7 @@ class ScyllaExecutionDAOSpec extends ScyllaSpec {
         foundId3 == workflowId
 
         when: 'check the metadata'
-        def workflowMetadata = executionDAO.getWorkflowMetadata(workflowId, shardId)
+        def workflowMetadata = executionDAO.getWorkflowMetadata(workflowId, shardId as int)
 
         then:
         workflowMetadata.totalTasks == 3
@@ -247,7 +247,7 @@ class ScyllaExecutionDAOSpec extends ScyllaSpec {
 
         then:
         removed
-        def workflowMetadata = executionDAO.getWorkflowMetadata(workflowId, "0")
+        def workflowMetadata = executionDAO.getWorkflowMetadata(workflowId, 0)
         workflowMetadata.totalTasks == 2
         workflowMetadata.totalPartitions == 1
 
@@ -464,7 +464,7 @@ class ScyllaExecutionDAOSpec extends ScyllaSpec {
         println("Create 1000 tasks, duration: ${System.currentTimeMillis() - start_time} ms")
 
         then:
-        def workflowMetadata = executionDAO.getWorkflowMetadata(workflowId, "0")
+        def workflowMetadata = executionDAO.getWorkflowMetadata(workflowId, 0)
         workflowMetadata.totalTasks == 1000
 
         when: 'read workflow with tasks'

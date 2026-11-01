@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Netflix, Inc.
+ * Copyright 2022 Conductor Authors.
  * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -12,20 +12,22 @@
  */
 package com.netflix.conductor.scylla.dao;
 
+import java.io.IOException;
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.netflix.conductor.core.exception.NonTransientException;
+import com.netflix.conductor.scylla.config.ScyllaProperties;
+
 import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.TableMetadata;
 import com.datastax.driver.core.schemabuilder.SchemaBuilder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
-import com.netflix.conductor.core.exception.NonTransientException;
-import com.netflix.conductor.metrics.Monitors;
-import com.netflix.conductor.scylla.config.ScyllaProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.util.UUID;
 
 import static com.netflix.conductor.scylla.util.Constants.*;
 
@@ -72,8 +74,7 @@ public abstract class ScyllaBaseDAO {
 
     private boolean initialized = false;
 
-    public ScyllaBaseDAO(
-            Session session, ObjectMapper objectMapper, ScyllaProperties properties) {
+    public ScyllaBaseDAO(Session session, ObjectMapper objectMapper, ScyllaProperties properties) {
         this.session = session;
         this.objectMapper = objectMapper;
         this.properties = properties;
@@ -93,8 +94,10 @@ public abstract class ScyllaBaseDAO {
         try {
             if (!initialized) {
                 // CREATE KEYSPACE needs CREATE on <all keyspaces> even with IF NOT EXISTS, which a
-                // role scoped to a pre-provisioned keyspace (e.g. DBaaS) doesn't have; skip it then.
-                if (session.getCluster().getMetadata().getKeyspace(properties.getKeyspace()) == null) {
+                // role scoped to a pre-provisioned keyspace (e.g. DBaaS) doesn't have; skip it
+                // then.
+                if (session.getCluster().getMetadata().getKeyspace(properties.getKeyspace())
+                        == null) {
                     session.execute(getCreateKeyspaceStatement());
                 } else {
                     LOGGER.info(
@@ -107,14 +110,21 @@ public abstract class ScyllaBaseDAO {
                 session.execute(getCreateWorkflowDefsTableStatement());
                 session.execute(getCreateWorkflowDefsIndexTableStatement());
                 session.execute(getCreateTaskDefsTableStatement());
-                //Added task_in_progress
+                // Added task_in_progress
                 session.execute(getCreateTaskInProgressTableStatement());
-                //Added workflow_lookup
-                //Added task_in_progress_v2
+                // Added workflow_lookup
+                // Added task_in_progress_v2
                 session.execute(getCreateTaskInProgressTableV2Statement());
                 session.execute(getCreateWorkflowLookupTableStatement());
                 session.execute(getCreateEventHandlersTableStatement());
                 session.execute(getCreateEventExecutionsTableStatement());
+                session.execute(getCreatePollDataTableStatement());
+                // Owner columns for tables created before they existed (CREATE IF NOT EXISTS
+                // leaves existing tables untouched).
+                addColumnIfMissing(TABLE_WORKFLOWS, TENANT_ID_KEY, true);
+                addColumnIfMissing(TABLE_WORKFLOWS, ACCOUNT_ID_KEY, true);
+                addColumnIfMissing(TABLE_WORKFLOW_LOOKUP, TENANT_ID_KEY, false);
+                addColumnIfMissing(TABLE_WORKFLOW_LOOKUP, ACCOUNT_ID_KEY, false);
                 LOGGER.info(
                         "{} initialization complete! Tables created!", getClass().getSimpleName());
                 initialized = true;
@@ -123,6 +133,33 @@ public abstract class ScyllaBaseDAO {
             LOGGER.error("Error initializing and setting up keyspace and table in cassandra", e);
             throw e;
         }
+    }
+
+    private void addColumnIfMissing(String table, String column, boolean isStatic) {
+        TableMetadata tableMetadata =
+                session.getCluster()
+                        .getMetadata()
+                        .getKeyspace(properties.getKeyspace())
+                        .getTable(table);
+        if (tableMetadata == null || tableMetadata.getColumn(column) != null) {
+            return;
+        }
+        String statement =
+                String.format(
+                        "ALTER TABLE %s.%s ADD %s text%s",
+                        properties.getKeyspace(), table, column, isStatic ? " static" : "");
+        LOGGER.info("Adding missing column: {}", statement);
+        session.execute(statement);
+    }
+
+    /** poll_data: one partition per queue, one row per domain. */
+    private String getCreatePollDataTableStatement() {
+        return SchemaBuilder.createTable(properties.getKeyspace(), TABLE_POLL_DATA)
+                .ifNotExists()
+                .addPartitionKey(QUEUE_NAME_KEY, DataType.text())
+                .addClusteringColumn(DOMAIN_KEY, DataType.text())
+                .addColumn(JSON_DATA_KEY, DataType.text())
+                .getQueryString();
     }
 
     private String getCreateKeyspaceStatement() {
@@ -150,6 +187,8 @@ public abstract class ScyllaBaseDAO {
                 .addColumn(VERSION, DataType.cint())
                 .addStaticColumn(TOTAL_TASKS_KEY, DataType.cint())
                 .addStaticColumn(TOTAL_PARTITIONS_KEY, DataType.cint())
+                .addStaticColumn(TENANT_ID_KEY, DataType.text())
+                .addStaticColumn(ACCOUNT_ID_KEY, DataType.text())
                 .getQueryString();
     }
 
@@ -157,7 +196,7 @@ public abstract class ScyllaBaseDAO {
         return SchemaBuilder.createTable(properties.getKeyspace(), TABLE_TASK_LOOKUP)
                 .ifNotExists()
                 .addPartitionKey(TASK_ID_KEY, DataType.uuid())
-                .addColumn(SHARD_ID_KEY,DataType.cint())
+                .addColumn(SHARD_ID_KEY, DataType.cint())
                 .addColumn(WORKFLOW_ID_KEY, DataType.uuid())
                 .getQueryString();
     }
@@ -169,7 +208,9 @@ public abstract class ScyllaBaseDAO {
         return SchemaBuilder.createTable(properties.getKeyspace(), TABLE_WORKFLOW_LOOKUP)
                 .ifNotExists()
                 .addPartitionKey(WORKFLOW_ID_KEY, DataType.uuid())
-                .addColumn(SHARD_ID_KEY,DataType.cint())
+                .addColumn(SHARD_ID_KEY, DataType.cint())
+                .addColumn(TENANT_ID_KEY, DataType.text())
+                .addColumn(ACCOUNT_ID_KEY, DataType.text())
                 .getQueryString();
     }
 

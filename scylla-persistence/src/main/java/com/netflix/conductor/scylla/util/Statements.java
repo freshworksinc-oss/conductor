@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Netflix, Inc.
+ * Copyright 2022 Conductor Authors.
  * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -14,10 +14,11 @@ package com.netflix.conductor.scylla.util;
 
 import com.datastax.driver.core.querybuilder.QueryBuilder;
 
-import static com.datastax.driver.core.querybuilder.QueryBuilder.*;
 import static com.netflix.conductor.scylla.util.Constants.*;
 
-//import com.datastax.oss.driver.api.querybuilder.QueryBuilder;
+import static com.datastax.driver.core.querybuilder.QueryBuilder.*;
+
+// import com.datastax.oss.driver.api.querybuilder.QueryBuilder;
 
 /**
  * DML statements
@@ -279,6 +280,8 @@ public class Statements {
                 .value(TOTAL_TASKS_KEY, bindMarker())
                 .value(TOTAL_PARTITIONS_KEY, bindMarker())
                 .value(VERSION, bindMarker())
+                .value(TENANT_ID_KEY, bindMarker())
+                .value(ACCOUNT_ID_KEY, bindMarker())
                 .getQueryString();
     }
 
@@ -294,6 +297,7 @@ public class Statements {
                 .value(PAYLOAD_KEY, bindMarker())
                 .getQueryString();
     }
+
     /**
      * @return cql query statement to insert a new event execution into the "event_executions" table
      */
@@ -310,8 +314,8 @@ public class Statements {
     // Select Statements
 
     /**
-     * @return cql query statement to retrieve all workflows executions from the "workflows"
-     *     table by coorelationId
+     * @return cql query statement to retrieve all workflows executions from the "workflows" table
+     *     by coorelationId
      */
     public String getSelectWorkflowsByCorrelationIdStatement() {
         return QueryBuilder.select(PAYLOAD_KEY)
@@ -335,8 +339,8 @@ public class Statements {
     }
 
     /**
-     * @return cql query statement to retrieve all the tasks count from task_in_progress table
-     * per taskDefName and task_id
+     * @return cql query statement to retrieve all the tasks count from task_in_progress table per
+     *     taskDefName and task_id
      */
     public String getSelectTaskInProgressStatement() {
         return QueryBuilder.select()
@@ -348,7 +352,8 @@ public class Statements {
     }
 
     /**
-     * @return cql query statement to retrieve all the tasks count from task_in_progress table per taskDefName
+     * @return cql query statement to retrieve all the tasks count from task_in_progress table per
+     *     taskDefName
      */
     public String getSelectCountTaskInProgressPerTskDefStatement() {
         return QueryBuilder.select()
@@ -359,8 +364,8 @@ public class Statements {
     }
 
     /**
-     * @return cql query statement to update the task in task_in_progress table per taskDefName
-     * and task_id
+     * @return cql query statement to update the task in task_in_progress table per taskDefName and
+     *     task_id
      */
     public String getUpdateTaskInProgressStatement() {
         return QueryBuilder.update(keyspace, TABLE_TASK_IN_PROGRESS)
@@ -371,8 +376,8 @@ public class Statements {
     }
 
     /**
-     * @return cql query statement to delete the task in task_in_progress table per taskDefName
-     * and task_id
+     * @return cql query statement to delete the task in task_in_progress table per taskDefName and
+     *     task_id
      */
     public String getDeleteTaskInProgressStatement() {
         return QueryBuilder.delete()
@@ -398,7 +403,7 @@ public class Statements {
      * @return cql query statement to retrieve a task from the "workflows" table
      */
     public String getSelectTaskStatement() {
-        return QueryBuilder.select(PAYLOAD_KEY)
+        return QueryBuilder.select(PAYLOAD_KEY, TENANT_ID_KEY, ACCOUNT_ID_KEY)
                 .from(keyspace, TABLE_WORKFLOWS)
                 .where(eq(WORKFLOW_ID_KEY, bindMarker()))
                 .and(eq(SHARD_ID_KEY, bindMarker()))
@@ -412,7 +417,7 @@ public class Statements {
      *     table
      */
     public String getSelectWorkflowStatement() {
-        return QueryBuilder.select(PAYLOAD_KEY,VERSION)
+        return QueryBuilder.select(PAYLOAD_KEY, VERSION, TENANT_ID_KEY, ACCOUNT_ID_KEY)
                 .from(keyspace, TABLE_WORKFLOWS)
                 .where(eq(WORKFLOW_ID_KEY, bindMarker()))
                 .and(eq(SHARD_ID_KEY, bindMarker()))
@@ -455,11 +460,11 @@ public class Statements {
     }
 
     /**
-     * @return cql query statement to retrieve the shard_id for a particular workflow_id  from the
+     * @return cql query statement to retrieve the shard_id for a particular workflow_id from the
      *     "workflow_lookup" table
      */
     public String getSelectShardFromWorkflowLookupTableStatement() {
-        return QueryBuilder.select(SHARD_ID_KEY)
+        return QueryBuilder.select(SHARD_ID_KEY, TENANT_ID_KEY, ACCOUNT_ID_KEY)
                 .from(keyspace, TABLE_WORKFLOW_LOOKUP)
                 .where(eq(WORKFLOW_ID_KEY, bindMarker()))
                 .getQueryString();
@@ -545,9 +550,52 @@ public class Statements {
     }
 
     /**
-     * @return cql query statement to update shard_id to workflow_id mapping to the "workflow_lookup"
-     *     table
+     * @return cql query statement to update shard_id to workflow_id mapping to the
+     *     "workflow_lookup" table
      */
+    /**
+     * @return cql query statement to insert the workflow_lookup row (shard and owner) for a new
+     *     workflow
+     */
+    public String getInsertWorkflowLookupStatement() {
+        return QueryBuilder.insertInto(keyspace, TABLE_WORKFLOW_LOOKUP)
+                .value(WORKFLOW_ID_KEY, bindMarker())
+                .value(SHARD_ID_KEY, bindMarker())
+                .value(TENANT_ID_KEY, bindMarker())
+                .value(ACCOUNT_ID_KEY, bindMarker())
+                .getQueryString();
+    }
+
+    // PollDataDAO
+
+    public String getInsertPollDataStatement() {
+        return QueryBuilder.insertInto(keyspace, TABLE_POLL_DATA)
+                .value(QUEUE_NAME_KEY, bindMarker())
+                .value(DOMAIN_KEY, bindMarker())
+                .value(JSON_DATA_KEY, bindMarker())
+                .getQueryString();
+    }
+
+    public String getSelectPollDataStatement() {
+        return QueryBuilder.select(JSON_DATA_KEY)
+                .from(keyspace, TABLE_POLL_DATA)
+                .where(eq(QUEUE_NAME_KEY, bindMarker()))
+                .and(eq(DOMAIN_KEY, bindMarker()))
+                .getQueryString();
+    }
+
+    public String getSelectPollDataForQueueStatement() {
+        return QueryBuilder.select(JSON_DATA_KEY)
+                .from(keyspace, TABLE_POLL_DATA)
+                .where(eq(QUEUE_NAME_KEY, bindMarker()))
+                .getQueryString();
+    }
+
+    /** Whole table: one row per queue + domain, so it stays small. */
+    public String getSelectAllPollDataStatement() {
+        return QueryBuilder.select(JSON_DATA_KEY).from(keyspace, TABLE_POLL_DATA).getQueryString();
+    }
+
     public String getUpdateWorkflowLookupStatement() {
         return QueryBuilder.update(keyspace, TABLE_WORKFLOW_LOOKUP)
                 .with(set(SHARD_ID_KEY, bindMarker()))
@@ -693,7 +741,7 @@ public class Statements {
 
     /**
      * @return cql query statement to delete the task in task_in_progress_v2 table per taskDefName
-     * and task_id
+     *     and task_id
      */
     public String getDeleteTaskInProgressV2Statement() {
         return QueryBuilder.delete()
@@ -705,7 +753,7 @@ public class Statements {
 
     /**
      * @return cql query statement to update the task in task_in_progress_v2 table per taskDefName
-     * and task_id
+     *     and task_id
      */
     public String getUpdateTaskInProgressV2Statement() {
         return QueryBuilder.update(keyspace, TABLE_TASK_IN_PROGRESS_V2)
@@ -717,7 +765,7 @@ public class Statements {
 
     /**
      * @return cql query statement to retrieve all the tasks count from task_in_progress_v2 table
-     * per taskDefName and task_id
+     *     per taskDefName and task_id
      */
     public String getSelectTaskInProgressV2Statement() {
         return QueryBuilder.select()

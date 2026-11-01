@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Netflix, Inc.
+ * Copyright 2022 Conductor Authors.
  * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -28,6 +28,7 @@ public interface Constants {
 
     String TABLE_TASK_IN_PROGRESS = "task_in_progress";
     String TABLE_TASK_IN_PROGRESS_V2 = "task_in_progress_v2";
+    String TABLE_POLL_DATA = "poll_data";
 
     String WORKFLOW_ID_KEY = "workflow_id";
     String SHARD_ID_KEY = "shard_id";
@@ -37,6 +38,14 @@ public interface Constants {
     String TOTAL_TASKS_KEY = "total_tasks";
     String VERSION = "version";
     String TOTAL_PARTITIONS_KEY = "total_partitions";
+    // Workflow owner: static on workflows, regular on workflow_lookup
+    String TENANT_ID_KEY = "tenant_id";
+    String ACCOUNT_ID_KEY = "account_id";
+    // poll_data: (queue_name, domain) -> PollData JSON; domain "DEFAULT" when none (as Postgres)
+    String QUEUE_NAME_KEY = "queue_name";
+    String DOMAIN_KEY = "domain";
+    String JSON_DATA_KEY = "json_data";
+    String DEFAULT_POLL_DOMAIN = "DEFAULT";
     String TASK_DEF_NAME_KEY = "task_def_name";
     String WORKFLOW_DEF_NAME_KEY = "workflow_def_name";
     String WORKFLOW_VERSION_KEY = "version";

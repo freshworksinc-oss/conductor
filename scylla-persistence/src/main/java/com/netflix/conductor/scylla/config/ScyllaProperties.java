@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Netflix, Inc.
+ * Copyright 2022 Conductor Authors.
  * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -34,6 +34,13 @@ public class ScyllaProperties {
 
     /** The keyspace to be used in the cassandra datastore */
     private String keyspace = "conductor";
+
+    /**
+     * Tenant stored for workflows created with neither an X-Tenant-ID header nor
+     * input._tenantContext.tenantID. When unset, such workflows get no owner and the legacy shard
+     * (numeric correlationId, else 0).
+     */
+    private String defaultTenant;
 
     /** The username to be used in the cassandra */
     private String userName = "scylla";
@@ -70,6 +77,14 @@ public class ScyllaProperties {
     @DurationUnit(ChronoUnit.SECONDS)
     private Duration eventHandlerCacheRefreshInterval = Duration.ofSeconds(60);
 
+    /**
+     * How often buffered poll data is written to Scylla. Poll data is updated on every task poll,
+     * so writes are buffered in memory and flushed at this interval (like the Postgres DAO). 0
+     * writes on every poll.
+     */
+    @DurationUnit(ChronoUnit.SECONDS)
+    private Duration pollDataFlushInterval = Duration.ofSeconds(5);
+
     /** The time to live in seconds for which the event execution will be persisted */
     @DurationUnit(ChronoUnit.SECONDS)
     private Duration eventExecutionPersistenceTtl = Duration.ZERO;
@@ -104,6 +119,14 @@ public class ScyllaProperties {
 
     public void setKeyspace(String keyspace) {
         this.keyspace = keyspace;
+    }
+
+    public String getDefaultTenant() {
+        return defaultTenant;
+    }
+
+    public void setDefaultTenant(String defaultTenant) {
+        this.defaultTenant = defaultTenant;
     }
 
     public int getShardSize() {
@@ -168,6 +191,14 @@ public class ScyllaProperties {
 
     public void setWriteConsistencyLevel(ConsistencyLevel writeConsistencyLevel) {
         this.writeConsistencyLevel = writeConsistencyLevel;
+    }
+
+    public Duration getPollDataFlushInterval() {
+        return pollDataFlushInterval;
+    }
+
+    public void setPollDataFlushInterval(Duration pollDataFlushInterval) {
+        this.pollDataFlushInterval = pollDataFlushInterval;
     }
 
     public Duration getTaskDefCacheRefreshInterval() {

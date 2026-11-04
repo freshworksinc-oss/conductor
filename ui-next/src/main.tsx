@@ -9,6 +9,7 @@ import { QueryClientProvider } from "react-query";
 import { ReactQueryDevtools } from "react-query/devtools";
 import { RouterProvider } from "react-router";
 import { logger } from "utils";
+import { applyBrandingFromContext } from "utils/applyBrandingFromContext";
 import {
   HOT_KEYS_SIDEBAR,
   HOT_KEYS_WORKFLOW_DEFINITION,
@@ -33,6 +34,8 @@ if (import.meta.env.VITE_XSTATE_INSPECT === "true") {
 }
 
 logger.log("Monitoring disabled");
+
+applyBrandingFromContext();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

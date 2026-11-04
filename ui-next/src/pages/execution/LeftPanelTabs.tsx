@@ -20,7 +20,9 @@ const isWorkflowIntrospectionEnabled = featureFlags.isEnabled(
   FEATURES.WORKFLOW_INTROSPECTION,
 );
 
-const showAgent = featureFlags.isEnabled(FEATURES.SHOW_AGENT);
+const showAgent =
+  featureFlags.isEnabled(FEATURES.CONDUCTOR_INTEGRATIONS_AI_ENABLED) &&
+  featureFlags.isEnabled(FEATURES.SHOW_AGENT, true);
 
 export default function LeftPanelTabs({
   execution,

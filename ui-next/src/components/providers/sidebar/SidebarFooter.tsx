@@ -19,6 +19,10 @@ import { FEATURES, featureFlags } from "utils";
 import { useState, type ReactNode } from "react";
 
 const isPlayground = featureFlags.isEnabled(FEATURES.PLAYGROUND);
+const showVersionBlock = featureFlags.isEnabled(
+  FEATURES.SHOW_SIDEBAR_VERSION_BLOCK,
+  true,
+);
 
 interface SidebarFooterProps {
   open: boolean;
@@ -56,7 +60,7 @@ export const SidebarFooter = ({
     return (
       <>
         {customUserBlock}
-        {open && (
+        {open && showVersionBlock && (
           <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mx: 1 }}>
             <SidebarVersionBlock
               open={open}
@@ -307,11 +311,13 @@ export const SidebarFooter = ({
             />
           )}
 
-          <SidebarVersionBlock
-            open={open}
-            conductorVersion={conductorVersion}
-            uiVersion={uiVersion}
-          />
+          {showVersionBlock && (
+            <SidebarVersionBlock
+              open={open}
+              conductorVersion={conductorVersion}
+              uiVersion={uiVersion}
+            />
+          )}
         </Box>
       )}
     </>

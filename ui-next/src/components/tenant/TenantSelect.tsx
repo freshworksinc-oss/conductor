@@ -32,18 +32,41 @@ export default function TenantSelect() {
   }
 
   return (
-    <Stack spacing={0.5} sx={{ width: "100%" }}>
-      <Typography variant="caption" color="text.secondary" fontWeight={500}>
+    <Stack spacing={0.75} sx={{ width: "100%", px: 0.5, py: 0.5 }}>
+      <Typography
+        variant="subtitle2"
+        component="label"
+        htmlFor="conductor-tenant-select"
+        sx={{
+          color: "text.primary",
+          fontWeight: 600,
+          fontSize: "0.8125rem",
+          letterSpacing: "0.02em",
+        }}
+      >
         Tenant
       </Typography>
       <FormControl size="small" fullWidth>
         <Select
+          id="conductor-tenant-select"
           value={selectedTenant}
           onChange={(e) => setTenant(String(e.target.value))}
           displayEmpty
+          sx={{
+            fontSize: "0.875rem",
+            fontWeight: 500,
+            color: "text.primary",
+            "& .MuiSelect-select": {
+              py: 1,
+            },
+          }}
         >
           {tenants.map((tenant) => (
-            <MenuItem key={tenant.id} value={tenant.id}>
+            <MenuItem
+              key={tenant.id}
+              value={tenant.id}
+              sx={{ fontSize: "0.875rem", fontWeight: 500 }}
+            >
               {tenant.id}
             </MenuItem>
           ))}

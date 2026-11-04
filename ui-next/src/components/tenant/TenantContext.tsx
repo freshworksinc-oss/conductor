@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import { useQuery } from "react-query";
+import { FEATURES, featureFlags } from "utils/flags";
 
 export type TenantRole = "Viewer" | "Editor" | "SuperAdmin";
 
@@ -46,12 +47,30 @@ function getTenantCookie(): string | null {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+const LOCAL_DEV_MOCK: UserInfoResponse = {
+  email: "local-dev@test.com",
+  tenants: {
+    test_tenant1: "SuperAdmin",
+    "local-tenant": "Editor",
+  },
+};
+
 async function fetchUserInfo(): Promise<UserInfoResponse> {
-  const response = await fetch("/api/userinfo");
-  if (!response.ok) {
-    throw new Error(`userinfo returned ${response.status}`);
+  try {
+    const response = await fetch("/api/userinfo");
+    if (!response.ok) {
+      throw new Error(`userinfo returned ${response.status}`);
+    }
+    return response.json();
+  } catch (error) {
+    if (
+      import.meta.env.DEV &&
+      featureFlags.isEnabled(FEATURES.LOCAL_DEV_MOCK_USERINFO)
+    ) {
+      return LOCAL_DEV_MOCK;
+    }
+    throw error;
   }
-  return response.json();
 }
 
 function parseTenants(data: UserInfoResponse): TenantEntry[] {

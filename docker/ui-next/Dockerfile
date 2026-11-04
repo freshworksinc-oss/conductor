@@ -36,8 +36,13 @@ RUN corepack enable && \
 # ===========================================================================================================
 # 1. Serve stage
 # ===========================================================================================================
-FROM nginx:stable-alpine
+# Slim image: core nginx + envsubst templates only (no xslt/image-filter/geoip/njs/curl).
+# Full stable-alpine pulls libxml2, libX11, libpng, and curl — unused for static UI + API proxy.
+FROM nginx:stable-alpine-slim
 LABEL maintainer="Freshworks <search-team@freshworks.com>"
+
+# Pick up Alpine security patches at build time (nginx, openssl, busybox, zlib, etc.).
+RUN apk update && apk upgrade --no-cache
 
 # Upstream conductor server for /api and /actuator; override at runtime.
 ENV WF_SERVER=http://conductor-server:8080

@@ -10,6 +10,7 @@ import { ReactQueryDevtools } from "react-query/devtools";
 import { RouterProvider } from "react-router";
 import { logger } from "utils";
 import { applyBrandingFromContext } from "utils/applyBrandingFromContext";
+import { ensureDefaultNewUiVariantCookie } from "utils/legacyUiSwitch";
 import {
   HOT_KEYS_SIDEBAR,
   HOT_KEYS_WORKFLOW_DEFINITION,
@@ -36,6 +37,7 @@ if (import.meta.env.VITE_XSTATE_INSPECT === "true") {
 logger.log("Monitoring disabled");
 
 applyBrandingFromContext();
+ensureDefaultNewUiVariantCookie();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

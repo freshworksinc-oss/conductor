@@ -131,6 +131,11 @@ export const FEATURES = Object.freeze({
   LOCAL_DEV_MOCK_USERINFO: "LOCAL_DEV_MOCK_USERINFO",
   /** Full origin for legacy UI (separate DNS), e.g. https://sandbox-caas-ui.freshworkscorp.com */
   LEGACY_UI_BASE_URL: "LEGACY_UI_BASE_URL",
+  /**
+   * Same hostname: set conductor-ui-variant cookie; sandbox auth-proxy Lua routes
+   * to legacy UI vs ui-next. Requires UI_VARIANT_COOKIE_NAME in envoy (no local Vite effect).
+   */
+  UI_VARIANT_COOKIE_ENABLED: "UI_VARIANT_COOKIE_ENABLED",
 });
 
 const mapOfLocalStorageValues = Object.fromEntries(

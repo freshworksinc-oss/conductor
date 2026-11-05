@@ -1,17 +1,18 @@
 import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 import { Alert, Button } from "@mui/material";
 import { useLocation } from "react-router-dom";
-import { buildLegacyUiSwitchUrl } from "utils/legacyUiSwitch";
+import {
+  activateClassicUiSwitch,
+  isClassicUiSwitchAvailable,
+} from "utils/legacyUiSwitch";
 
 /**
- * Shown on workflow home when LEGACY_UI_BASE_URL is set (Freshworks UI cutover).
- * Navigates to the legacy UI hostname in the same tab, keeping path/query when possible.
+ * Shown on workflow home when classic UI switch is configured (cookie or legacy DNS).
  */
 export default function LegacyUiSwitchBanner() {
   const { pathname, search } = useLocation();
-  const targetUrl = buildLegacyUiSwitchUrl(pathname, search);
 
-  if (!targetUrl) {
+  if (!isClassicUiSwitchAvailable()) {
     return null;
   }
 
@@ -26,7 +27,7 @@ export default function LegacyUiSwitchBanner() {
           variant="outlined"
           startIcon={<SwapHorizIcon />}
           onClick={() => {
-            window.location.assign(targetUrl);
+            activateClassicUiSwitch(pathname, search);
           }}
         >
           Switch to classic UI

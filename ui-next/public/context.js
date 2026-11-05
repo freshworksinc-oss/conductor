@@ -73,8 +73,8 @@ window.conductor = {
   FAVICON_URL: "/icons/freshworks/favicon.ico",
   DOCUMENT_TITLE: "Conductor",
 
-  // Classic CRA UI (legacy DNS). Empty in staging until host exists.
-  LEGACY_UI_BASE_URL: "https://sandbox-caas-ui.freshworkscorp.com",
+  // Classic CRA UI: same host, cookie read by sandbox conductor-auth-proxy Lua.
+  UI_VARIANT_COOKIE_ENABLED: true,
 };
 
 // No authentication configuration for OSS

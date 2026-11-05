@@ -82,7 +82,8 @@ FROM debian:stable-slim
 
 LABEL maintainer="Orkes OSS <oss@orkes.io>"
 
-# Install runtime packages, then upgrade to pick up Debian security fixes (curl, nginx, zlib, JRE, …).
+# Install runtime packages, then upgrade to pick up Debian security fixes (curl, JRE, zlib, …).
+# Rebuild with: docker build --pull -f docker/server/Dockerfile .
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openjdk-21-jre-headless nginx curl ca-certificates \
     && apt-get upgrade -y --no-install-recommends \

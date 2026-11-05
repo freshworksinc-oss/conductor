@@ -24,10 +24,10 @@ dependencies {
 
     implementation 'com.fasterxml.jackson.core:jackson-core:2.18.0'
 
-    implementation 'org.opensearch.client:opensearch-java:2.18.0'
+    implementation "org.opensearch.client:opensearch-java:${revOpenSearch2Client}"
     implementation 'org.apache.httpcomponents.client5:httpclient5:5.2.1'
-    implementation "org.opensearch.client:opensearch-rest-client:2.18.0"
-    implementation "org.opensearch.client:opensearch-rest-high-level-client:2.18.0"
+    implementation "org.opensearch.client:opensearch-rest-client:${revOpenSearch2Client}"
+    implementation "org.opensearch.client:opensearch-rest-high-level-client:${revOpenSearch2Client}"
 
     testImplementation "net.java.dev.jna:jna:5.7.0"
     testImplementation "org.awaitility:awaitility:${revAwaitility}"

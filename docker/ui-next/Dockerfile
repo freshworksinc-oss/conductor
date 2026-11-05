@@ -42,18 +42,26 @@ RUN pnpm install --frozen-lockfile && \
 # ===========================================================================================================
 # ===========================================================================================================
 # Slim: core nginx + envsubst only — not the full stable-alpine bundle (xslt, curl, image-filter, …).
-FROM nginx:stable-alpine-slim
+ARG NGINX_RUNTIME_IMAGE=nginx:stable-alpine-slim
+FROM ${NGINX_RUNTIME_IMAGE}
 LABEL maintainer="Freshworks <search-team@freshworks.com>"
 
-# Apply Alpine CVE fixes at build time; use docker build --pull for a fresh nginx base.
-RUN apk update && apk upgrade --no-cache \
+# Alpine busybox 1.38.0-r0+ fixes CVE-2026-26157, CVE-2026-26158, CVE-2026-29004 (RapidFort).
+# Rebuild with: docker build --pull -f docker/ui-next/Dockerfile .
+RUN apk update \
+    && apk upgrade --no-cache \
     && apk add --no-cache --upgrade \
+        busybox \
         nginx \
         pcre2 \
         zlib \
-        busybox \
         libcrypto3 \
-        libssl3
+        libssl3 \
+    && busybox_ver="$(apk info -v busybox 2>/dev/null | head -1 | sed 's/^busybox-//')" \
+    && if apk version -t '<<' "${busybox_ver}" '1.38.0-r0'; then \
+         echo "busybox ${busybox_ver} is below 1.38.0-r0; use docker build --pull or bump NGINX_RUNTIME_IMAGE" >&2; \
+         exit 1; \
+       fi
 
 # Upstream conductor server for /api and /actuator; override at runtime.
 ENV WF_SERVER=http://conductor-server:8080

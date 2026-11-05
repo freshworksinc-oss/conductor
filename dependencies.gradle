@@ -123,6 +123,8 @@ ext {
     revOpenTelemetryApi = '1.67.0'
     // OpenSearch 2.x client line; opensearch-common CVE-2025-9624 fixed in 2.19.4+.
     revOpenSearch2Client = '2.19.4'
+    // opensearch-java is versioned separately from the server/REST clients and has no 2.19.4.
+    revOpenSearchJavaClient = '2.18.0'
     revOpenTelemetryJavaagent = '2.28.0'
     revPyroscope = '0.14.0'
 }

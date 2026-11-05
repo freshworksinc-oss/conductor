@@ -45,6 +45,7 @@ dependencies {
     implementation project(':conductor-cassandra-persistence')
     implementation project(':conductor-scylla-persistence')
     implementation project(':conductor-postgres-persistence')
+    implementation project(':conductor-pg-mirror')
     implementation project(':conductor-mysql-persistence')
     implementation project(':conductor-sqlite-persistence')
     implementation("io.pyroscope:agent:0.14.0")

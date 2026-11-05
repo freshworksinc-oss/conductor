@@ -48,6 +48,7 @@ include 'grpc-client'
 // community modules
 include 'workflow-event-listener'
 include 'task-status-listener'
+include 'pg-mirror'
 include 'test-util'
 include 'kafka'
 include 'common-persistence'

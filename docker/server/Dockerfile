@@ -12,6 +12,9 @@
 # The bundled UI is the Freshworks customized React app in ui/ (not upstream ui-next).
 #
 
+# Must be declared before any FROM to use in a later FROM (ui-builder).
+ARG NODE_IMAGE=node:20-bookworm
+
 # ===========================================================================================================
 # 0. Builder stage
 # ===========================================================================================================
@@ -44,7 +47,6 @@ RUN if [ "$PREBUILT" = "true" ]; then \
 # 1. UI builder stage
 # ===========================================================================================================
 # Pin Node 20: node:lts (Node 24+) may omit corepack; ui/ uses yarn, not ui-next.
-ARG NODE_IMAGE=node:20-bookworm
 FROM ${NODE_IMAGE} AS ui-builder
 
 ARG PREBUILT=false

@@ -9,17 +9,24 @@
 #
 # Build from the repo root:
 #
-#   docker build -t conductor:ui-next -f docker/ui-next/Dockerfile .
+#   docker build --pull -t conductor:ui-next -f docker/ui-next/Dockerfile .
 #
 # Note: the Freshworks conductor:server image bundles legacy ui/ (tenant UI).
 # Use this image to run ui-next separately (e.g. sandbox evaluation).
 #
+# Security / scan scope: only the final stage (nginx) is shipped to ECR and scanned.
+# Do not revert to nginx:stable-alpine (pulls curl, libxml2, libX11, etc.) or node:lts
+# (tag drift; Node 24+ images may omit corepack and break the build).
+#
 
 # ===========================================================================================================
-# 0. Build stage
+# 0. Build stage (discarded — not present in the runtime image)
 # ===========================================================================================================
-FROM node:lts AS builder
+ARG NODE_IMAGE=node:22-bookworm
+FROM ${NODE_IMAGE} AS builder
 LABEL maintainer="Freshworks <search-team@freshworks.com>"
+
+RUN corepack enable
 
 COPY ui-next /conductor/ui-next
 WORKDIR /conductor/ui-next
@@ -29,20 +36,24 @@ WORKDIR /conductor/ui-next
 ARG REACT_APP_FEATURE_TENANT_SELECTION=true
 ENV REACT_APP_FEATURE_TENANT_SELECTION=${REACT_APP_FEATURE_TENANT_SELECTION}
 
-RUN corepack enable && \
-    pnpm install --frozen-lockfile && \
+RUN pnpm install --frozen-lockfile && \
     NODE_OPTIONS=--max-old-space-size=4096 pnpm build
 
 # ===========================================================================================================
-# 1. Serve stage
 # ===========================================================================================================
-# Slim image: core nginx + envsubst templates only (no xslt/image-filter/geoip/njs/curl).
-# Full stable-alpine pulls libxml2, libX11, libpng, and curl — unused for static UI + API proxy.
+# Slim: core nginx + envsubst only — not the full stable-alpine bundle (xslt, curl, image-filter, …).
 FROM nginx:stable-alpine-slim
 LABEL maintainer="Freshworks <search-team@freshworks.com>"
 
-# Pick up Alpine security patches at build time (nginx, openssl, busybox, zlib, etc.).
-RUN apk update && apk upgrade --no-cache
+# Apply Alpine CVE fixes at build time; use docker build --pull for a fresh nginx base.
+RUN apk update && apk upgrade --no-cache \
+    && apk add --no-cache --upgrade \
+        nginx \
+        pcre2 \
+        zlib \
+        busybox \
+        libcrypto3 \
+        libssl3
 
 # Upstream conductor server for /api and /actuator; override at runtime.
 ENV WF_SERVER=http://conductor-server:8080

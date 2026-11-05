@@ -15,7 +15,7 @@ package com.netflix.conductor.rest.controllers;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,16 +23,14 @@ import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.core.exception.NotFoundException;
+import com.netflix.conductor.tenant.TenantMetadataConditions;
 import com.netflix.conductor.tenant.TenantMetadataDAO;
 
 @RestController
 @RequestMapping("/api/tenant/metadata")
-// Same switch as TenantMetadataConfiguration (not @ConditionalOnBean, which is unreliable on
-// scanned components).
-@ConditionalOnProperty(
-        name = "conductor.tenant-metadata.enabled",
-        havingValue = "true",
-        matchIfMissing = true)
+// Same switch as the tenant metadata configurations (not @ConditionalOnBean, which is unreliable on
+// scanned components): on unless conductor.tenant-metadata.enabled=false.
+@ConditionalOnExpression(TenantMetadataConditions.SERVED)
 public class TenantMetadataResource {
 
     private final TenantMetadataDAO tenantMetadataDAO;

@@ -190,6 +190,17 @@ flowchart TD
 Definitions are **shared by name**, the same as with Postgres today. We did not
 add tenant columns to definition tables in this change.
 
+**Listing a tenant's definitions.** Through the auth proxy, a tenant's `GET
+/api/metadata/...` is rewritten to `GET /api/tenant/metadata/...`, which returns
+only the definitions whose `ownerApp` is that tenant. No property chooses where
+it reads from: it follows `conductor.db.type`. With `postgres` it reads the
+Postgres `meta_*` tables. With anything else, Scylla included, it reads the
+persistence's own definitions through `MetadataDAO` and filters on `ownerApp` in
+memory, with the same exact-match rule, so Scylla needs no Postgres.
+
+`conductor.tenant-metadata.enabled=false` turns the endpoint off, and the proxy's
+rewritten GETs then return 404. Do not set it on Scylla.
+
 ---
 
 ### 7.2 Start a workflow

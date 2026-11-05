@@ -12,232 +12,49 @@
  */
 package com.netflix.conductor.tenant;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.*;
-
-import javax.sql.DataSource;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+/**
+ * Read-only, tenant-scoped view of workflow and task definitions: a definition belongs to the
+ * tenant in its {@code ownerApp} field (the auth proxy writes it on registration). Served under
+ * {@code /api/tenant/metadata}, where the proxy sends tenant GETs of {@code /api/metadata}.
+ *
+ * <p>Implementations: {@link PostgresTenantMetadataDAO} (Postgres {@code meta_*} tables, the
+ * default) and {@link DaoTenantMetadataDAO} (any persistence, through {@code MetadataDAO}; use it
+ * with Scylla). Chosen by {@code conductor.db.type}, see {@link TenantMetadataConditions}.
+ */
+public interface TenantMetadataDAO {
 
-public class TenantMetadataDAO {
+    /** All versions of the tenant's workflow definitions, ordered by name and version. */
+    List<WorkflowDef> getWorkflowDefsByTenant(String tenantId);
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(TenantMetadataDAO.class);
+    /** The latest version of each workflow definition owned by the tenant, ordered by name. */
+    List<WorkflowDef> getWorkflowDefsLatestVersionsByTenant(String tenantId);
 
-    private final DataSource dataSource;
-    private final ObjectMapper objectMapper;
+    /** The tenant's workflow names with a summary of each version. */
+    Map<String, List<WorkflowDefSummary>> getWorkflowNamesAndVersionsByTenant(String tenantId);
 
-    public TenantMetadataDAO(DataSource dataSource, ObjectMapper objectMapper) {
-        this.dataSource = dataSource;
-        this.objectMapper = objectMapper;
-    }
+    /**
+     * One definition of the tenant; the latest version when {@code version} is null. Empty when it
+     * does not exist or belongs to another tenant.
+     */
+    Optional<WorkflowDef> getWorkflowDef(String tenantId, String name, Integer version);
 
-    /** Get all workflow definitions belonging to the given tenant. */
-    public List<WorkflowDef> getWorkflowDefsByTenant(String tenantId) {
-        String sql =
-                "SELECT json_data FROM meta_workflow_def "
-                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                        + "ORDER BY name, version";
-        return queryList(sql, tenantId, WorkflowDef.class);
-    }
+    /** Version summaries of one of the tenant's workflows, ordered by version. */
+    List<WorkflowDefSummary> getWorkflowVersionsByTenant(String tenantId, String name);
 
-    /** Get latest version of each workflow definition for the given tenant. */
-    public List<WorkflowDef> getWorkflowDefsLatestVersionsByTenant(String tenantId) {
-        String sql =
-                "SELECT json_data FROM meta_workflow_def "
-                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                        + "AND version = latest_version ORDER BY name";
-        return queryList(sql, tenantId, WorkflowDef.class);
-    }
+    /** Distinct names of the tenant's workflow definitions, sorted. */
+    List<String> getWorkflowNamesByTenant(String tenantId);
 
-    /** Get workflow names and versions for the given tenant. */
-    public Map<String, List<WorkflowDefSummary>> getWorkflowNamesAndVersionsByTenant(
-            String tenantId) {
-        String sql =
-                "SELECT json_data FROM meta_workflow_def "
-                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                        + "ORDER BY name, version";
-        List<WorkflowDef> defs = queryList(sql, tenantId, WorkflowDef.class);
+    /** The tenant's task definitions, ordered by name. */
+    List<TaskDef> getTaskDefsByTenant(String tenantId);
 
-        Map<String, List<WorkflowDefSummary>> result = new LinkedHashMap<>();
-        for (WorkflowDef def : defs) {
-            WorkflowDefSummary summary = new WorkflowDefSummary();
-            summary.setName(def.getName());
-            summary.setVersion(def.getVersion());
-            summary.setCreateTime(def.getCreateTime());
-            result.computeIfAbsent(def.getName(), k -> new ArrayList<>()).add(summary);
-        }
-        return result;
-    }
-
-    /** Get a specific workflow definition by name for the given tenant. */
-    public Optional<WorkflowDef> getWorkflowDef(String tenantId, String name, Integer version) {
-        if (version != null) {
-            String sql =
-                    "SELECT json_data FROM meta_workflow_def "
-                            + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                            + "AND name = ? AND version = ?";
-            return querySingleTenantWithVersion(sql, tenantId, name, version, WorkflowDef.class);
-        } else {
-            String sql =
-                    "SELECT json_data FROM meta_workflow_def "
-                            + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                            + "AND name = ? AND version = latest_version";
-            return querySingleTenant(sql, tenantId, name, WorkflowDef.class);
-        }
-    }
-
-    /** Get version summaries for a specific workflow name for the given tenant. */
-    public List<WorkflowDefSummary> getWorkflowVersionsByTenant(String tenantId, String name) {
-        String sql =
-                "SELECT json_data FROM meta_workflow_def "
-                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                        + "AND name = ? "
-                        + "ORDER BY version";
-        List<WorkflowDef> defs = queryList(sql, tenantId, name, WorkflowDef.class);
-        List<WorkflowDefSummary> results = new ArrayList<>();
-        for (WorkflowDef def : defs) {
-            WorkflowDefSummary summary = new WorkflowDefSummary();
-            summary.setName(def.getName());
-            summary.setVersion(def.getVersion());
-            summary.setCreateTime(def.getCreateTime());
-            results.add(summary);
-        }
-        return results;
-    }
-
-    /** Get distinct workflow definition names for the given tenant. */
-    public List<String> getWorkflowNamesByTenant(String tenantId) {
-        String sql =
-                "SELECT DISTINCT json_data::jsonb->>'name' AS name FROM meta_workflow_def "
-                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                        + "ORDER BY name";
-        List<String> results = new ArrayList<>();
-        try (Connection conn = dataSource.getConnection();
-                PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, tenantId);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    results.add(rs.getString(1));
-                }
-            }
-        } catch (SQLException e) {
-            LOGGER.error("Database query failed: {}", sql, e);
-            throw new RuntimeException("Database query failed", e);
-        }
-        return results;
-    }
-
-    /** Get all task definitions belonging to the given tenant. */
-    public List<TaskDef> getTaskDefsByTenant(String tenantId) {
-        String sql =
-                "SELECT json_data FROM meta_task_def "
-                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                        + "ORDER BY name";
-        return queryList(sql, tenantId, TaskDef.class);
-    }
-
-    /** Get a specific task definition by name for the given tenant. */
-    public Optional<TaskDef> getTaskDef(String tenantId, String name) {
-        String sql =
-                "SELECT json_data FROM meta_task_def "
-                        + "WHERE json_data::jsonb->>'ownerApp' = ? "
-                        + "AND name = ?";
-        return querySingleTenant(sql, tenantId, name, TaskDef.class);
-    }
-
-    // ---- internal helpers ----
-
-    private <T> List<T> queryList(String sql, String param1, String param2, Class<T> type) {
-        List<T> results = new ArrayList<>();
-        try (Connection conn = dataSource.getConnection();
-                PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, param1);
-            ps.setString(2, param2);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    results.add(objectMapper.readValue(rs.getString(1), type));
-                }
-            }
-        } catch (SQLException e) {
-            LOGGER.error("Database query failed: {}", sql, e);
-            throw new RuntimeException("Database query failed", e);
-        } catch (Exception e) {
-            LOGGER.error("JSON deserialization failed", e);
-            throw new RuntimeException("JSON deserialization failed", e);
-        }
-        return results;
-    }
-
-    private <T> List<T> queryList(String sql, String param, Class<T> type) {
-        List<T> results = new ArrayList<>();
-        try (Connection conn = dataSource.getConnection();
-                PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, param);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    results.add(objectMapper.readValue(rs.getString(1), type));
-                }
-            }
-        } catch (SQLException e) {
-            LOGGER.error("Database query failed: {}", sql, e);
-            throw new RuntimeException("Database query failed", e);
-        } catch (Exception e) {
-            LOGGER.error("JSON deserialization failed", e);
-            throw new RuntimeException("JSON deserialization failed", e);
-        }
-        return results;
-    }
-
-    private <T> Optional<T> querySingleTenant(
-            String sql, String tenantId, String name, Class<T> type) {
-        try (Connection conn = dataSource.getConnection();
-                PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, tenantId);
-            ps.setString(2, name);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return Optional.of(objectMapper.readValue(rs.getString(1), type));
-                }
-            }
-        } catch (SQLException e) {
-            LOGGER.error("Database query failed: {}", sql, e);
-            throw new RuntimeException("Database query failed", e);
-        } catch (Exception e) {
-            LOGGER.error("JSON deserialization failed", e);
-            throw new RuntimeException("JSON deserialization failed", e);
-        }
-        return Optional.empty();
-    }
-
-    private <T> Optional<T> querySingleTenantWithVersion(
-            String sql, String tenantId, String name, int version, Class<T> type) {
-        try (Connection conn = dataSource.getConnection();
-                PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, tenantId);
-            ps.setString(2, name);
-            ps.setInt(3, version);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return Optional.of(objectMapper.readValue(rs.getString(1), type));
-                }
-            }
-        } catch (SQLException e) {
-            LOGGER.error("Database query failed: {}", sql, e);
-            throw new RuntimeException("Database query failed", e);
-        } catch (Exception e) {
-            LOGGER.error("JSON deserialization failed", e);
-            throw new RuntimeException("JSON deserialization failed", e);
-        }
-        return Optional.empty();
-    }
+    /** One task definition of the tenant; empty when missing or owned by another tenant. */
+    Optional<TaskDef> getTaskDef(String tenantId, String name);
 }

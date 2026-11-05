@@ -19,10 +19,13 @@
 # (tag drift; Node 24+ images may omit corepack and break the build).
 #
 
+# Must be declared before any FROM to use in later FROM lines (runtime stage).
+ARG NODE_IMAGE=node:22-bookworm
+ARG NGINX_RUNTIME_IMAGE=nginx:stable-alpine-slim
+
 # ===========================================================================================================
 # 0. Build stage (discarded — not present in the runtime image)
 # ===========================================================================================================
-ARG NODE_IMAGE=node:22-bookworm
 FROM ${NODE_IMAGE} AS builder
 LABEL maintainer="Freshworks <search-team@freshworks.com>"
 
@@ -42,7 +45,6 @@ RUN pnpm install --frozen-lockfile && \
 # ===========================================================================================================
 # ===========================================================================================================
 # Slim: core nginx + envsubst only — not the full stable-alpine bundle (xslt, curl, image-filter, …).
-ARG NGINX_RUNTIME_IMAGE=nginx:stable-alpine-slim
 FROM ${NGINX_RUNTIME_IMAGE}
 LABEL maintainer="Freshworks <search-team@freshworks.com>"
 

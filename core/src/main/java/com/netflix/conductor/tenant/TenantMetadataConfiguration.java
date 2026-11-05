@@ -14,16 +14,24 @@ package com.netflix.conductor.tenant;
 
 import javax.sql.DataSource;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+// Postgres-backed tenant metadata, used when conductor.db.type=postgres (reads the meta_* tables).
+// Other persistences (Scylla) use DaoTenantMetadataConfiguration and need no Postgres.
+// conductor.tenant-metadata.enabled=false drops /api/tenant/metadata.
 @Configuration
+@Import(DataSourceAutoConfiguration.class)
+@ConditionalOnExpression(TenantMetadataConditions.POSTGRES)
 public class TenantMetadataConfiguration {
 
     @Bean
     public TenantMetadataDAO tenantMetadataDAO(DataSource dataSource, ObjectMapper objectMapper) {
-        return new TenantMetadataDAO(dataSource, objectMapper);
+        return new PostgresTenantMetadataDAO(dataSource, objectMapper);
     }
 }

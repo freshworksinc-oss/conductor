@@ -46,7 +46,7 @@ RUN if [ "$PREBUILT" = "true" ]; then \
 # ===========================================================================================================
 # 1. UI builder stage
 # ===========================================================================================================
-# Pin Node 20: node:lts (Node 24+) may omit corepack; ui/ uses yarn, not ui-next.
+# Pin Node 20: node:24 (Node 24+) may omit corepack; ui/ uses yarn, not ui-next.
 FROM ${NODE_IMAGE} AS ui-builder
 
 ARG PREBUILT=false

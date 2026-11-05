@@ -8,7 +8,7 @@ buildscript {
         }
     }
     dependencies {
-        classpath 'org.springframework.boot:spring-boot-gradle-plugin:3.5.14'
+        classpath 'org.springframework.boot:spring-boot-gradle-plugin:3.5.15'
         classpath 'com.diffplug.spotless:spotless-plugin-gradle:6.+'
     }
 }
@@ -21,13 +21,13 @@ plugins {
     id 'signing'
     id 'java-library'
     id "com.diffplug.spotless" version "6.25.0"
-    id 'org.springframework.boot' version '3.5.14'
+    id 'org.springframework.boot' version '3.5.15'
 }
 
 // Establish version and status
 ext.githubProjectName = rootProject.name // Change if github project name is not the same as the root project's name
 
-ext["tomcat.version"] = "10.1.54"
+ext["tomcat.version"] = "10.1.59"
 
 subprojects {
     tasks.withType(Javadoc).all { enabled = false }
@@ -64,12 +64,34 @@ allprojects {
             resolutionStrategy.eachDependency { details ->
                 // Compat: align all com.fasterxml.jackson.* to the same version — mixed versions cause ClassNotFoundException
                 if (details.requested.group.startsWith('com.fasterxml.jackson.')) {
-                    details.useVersion "2.18.8"
+                    details.useVersion "2.18.11"
                 }
                 // Compat: Spring Boot 3.5 requires HttpClient 5.4+ for TlsSocketStrategy.
                 if (details.requested.group == 'org.apache.httpcomponents.client5'
                         && details.requested.name == 'httpclient5') {
-                    details.useVersion "5.5.2"
+                    details.useVersion "5.6.3"
+                }
+                // Security: RapidFort / GHSA — Bouncy Castle, Snappy, jsoup, MCP, Guava, MongoDB sync
+                if (details.requested.group == 'org.bouncycastle') {
+                    details.useVersion '1.86'
+                }
+                if (details.requested.group == 'org.xerial.snappy' && details.requested.name == 'snappy-java') {
+                    details.useVersion '1.1.10.9'
+                }
+                if (details.requested.group == 'org.jsoup') {
+                    details.useVersion '1.23.2'
+                }
+                if (details.requested.group == 'io.modelcontextprotocol.sdk' && details.requested.name == 'mcp-core') {
+                    details.useVersion revMCP
+                }
+                if (details.requested.group == 'com.google.guava' && details.requested.name == 'guava') {
+                    details.useVersion revGuava
+                }
+                if (details.requested.group == 'org.mongodb' && details.requested.name == 'mongodb-driver-sync') {
+                    details.useVersion revMongodbDriver
+                }
+                if (details.requested.group == 'org.json' && details.requested.name == 'json') {
+                    details.useVersion '20260719'
                 }
                 // Compat: Flyway database modules must match Flyway core's internal API.
                 if (details.requested.group == 'org.flywaydb') {

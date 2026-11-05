@@ -43,7 +43,9 @@ RUN if [ "$PREBUILT" = "true" ]; then \
 # ===========================================================================================================
 # 1. UI builder stage
 # ===========================================================================================================
-FROM node:lts AS ui-builder
+# Pin Node 20: node:lts (Node 24+) may omit corepack; ui/ uses yarn, not ui-next.
+ARG NODE_IMAGE=node:20-bookworm
+FROM ${NODE_IMAGE} AS ui-builder
 
 ARG PREBUILT=false
 ARG SKIP_UI=false
@@ -78,8 +80,10 @@ FROM debian:stable-slim
 
 LABEL maintainer="Orkes OSS <oss@orkes.io>"
 
+# Install runtime packages, then upgrade to pick up Debian security fixes (curl, nginx, zlib, JRE, …).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends openjdk-21-jre-headless nginx curl ca-certificates \
+    && apt-get upgrade -y --no-install-recommends \
     && rm -f /etc/nginx/sites-enabled/default \
     && rm -rf /var/lib/apt/lists/*
 

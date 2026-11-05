@@ -37,6 +37,7 @@ consumer (migrator): list ─► Postgres journal (durable) ─► apply to the 
 | `timeout-ms` | 200 | connect and read timeout of a push |
 | `breaker-failures` / `breaker-open-ms` | 5 / 10000 | circuit breaker |
 | `max-queue-length` | 2000000 | pause pushing above this |
+| `poll-data-flush-ms` | 10000 | poll data is buffered; the latest poll per queue + domain goes out as one message every this many ms |
 
 Example for the Scylla Conductor:
 
@@ -60,6 +61,10 @@ Every table `PostgresExecutionDAO` writes for an operation is written here too.
 | `removeWorkflow` | `workflow_def_to_workflow`, `workflow`, `workflow_pending` + the four above for every task | built from the workflow as it was before |
 | `removeFromPendingWorkflow` | `workflow_pending` | a no-op on Scylla, but Postgres has the table |
 | `addEventExecution` (only if added), `updateEventExecution`, `removeEventExecution` | `event_execution` | |
+| `createTaskDef`, `updateTaskDef`, `removeTaskDef` | `meta_task_def` | upsert by name |
+| `createWorkflowDef`, `updateWorkflowDef`, `removeWorkflowDef` | `meta_workflow_def` | upsert by (name, version), then `latest_version` of the name is set to its highest version (two statements, each placeholder used once) |
+| `addEventHandler`, `updateEventHandler`, `removeEventHandler` | `meta_event_handler` | delete + insert in one message (the table has no unique name) |
+| `updateLastPollData` | `poll_data` | **buffered**: one message per flush interval with the latest poll of each queue + domain; an older poll never overwrites a newer one |
 
 `createTasks` mirrors every task the Scylla DAO returns: that is what Scylla stored. (The Postgres DAO
 skips tasks that are already scheduled; the Scylla DAO does not.)

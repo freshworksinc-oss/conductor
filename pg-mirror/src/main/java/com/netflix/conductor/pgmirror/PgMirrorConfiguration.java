@@ -25,13 +25,16 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 
+import com.netflix.conductor.dao.EventHandlerDAO;
 import com.netflix.conductor.dao.ExecutionDAO;
+import com.netflix.conductor.dao.MetadataDAO;
+import com.netflix.conductor.dao.PollDataDAO;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Wires the mirror around the persistence's {@link ExecutionDAO} from the outside, so the
- * persistence module (Scylla) is not changed. Only active with {@code
+ * Wires the mirror around the persistence's execution, metadata, event handler and poll data DAOs
+ * from the outside, so the persistence module (Scylla) is not changed. Only active with {@code
  * conductor.pg-mirror.enabled=true} and a persistence other than postgres (the mirror writes
  * towards Postgres, so it makes no sense on it).
  */
@@ -78,7 +81,10 @@ public class PgMirrorConfiguration {
 
         @Override
         public Object postProcessAfterInitialization(Object bean, String beanName) {
-            if (!(bean instanceof ExecutionDAO) || bean instanceof Advised) {
+            boolean execution = bean instanceof ExecutionDAO;
+            boolean metadata = bean instanceof MetadataDAO || bean instanceof EventHandlerDAO;
+            boolean pollData = bean instanceof PollDataDAO;
+            if (!(execution || metadata || pollData) || bean instanceof Advised) {
                 return bean;
             }
             if (bean.getClass().getName().contains("Postgres")) {
@@ -87,16 +93,26 @@ public class PgMirrorConfiguration {
                         beanName);
                 return bean;
             }
+            PgMirrorSql sql = new PgMirrorSql(beanFactory.getBean(ObjectMapper.class));
+            PgMirrorPublisher publisher = beanFactory.getBean(PgMirrorPublisher.class);
             ProxyFactory factory = new ProxyFactory(bean); // proxies every interface of the DAO
-            factory.addAdvice(
-                    new PgMirrorExecutionDaoInterceptor(
-                            (ExecutionDAO) bean,
-                            new PgMirrorSql(beanFactory.getBean(ObjectMapper.class)),
-                            beanFactory.getBean(PgMirrorPublisher.class)));
-            LOGGER.info(
-                    "pg-mirror: wrapped the execution DAO {} ({})",
-                    beanName,
-                    bean.getClass().getSimpleName());
+            if (execution) {
+                factory.addAdvice(
+                        new PgMirrorExecutionDaoInterceptor((ExecutionDAO) bean, sql, publisher));
+            }
+            if (metadata) {
+                factory.addAdvice(new PgMirrorMetadataDaoInterceptor(sql, publisher));
+            }
+            if (pollData) {
+                factory.addAdvice(
+                        new PgMirrorPollDataDaoInterceptor(
+                                sql,
+                                publisher,
+                                beanFactory
+                                        .getBean(PgMirrorProperties.class)
+                                        .getPollDataFlushMs()));
+            }
+            LOGGER.info("pg-mirror: wrapped {} ({})", beanName, bean.getClass().getSimpleName());
             return factory.getProxy();
         }
     }

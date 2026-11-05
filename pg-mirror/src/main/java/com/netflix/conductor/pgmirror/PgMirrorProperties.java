@@ -41,6 +41,12 @@ public class PgMirrorProperties {
     /** While the breaker is open pushes are skipped, for this long. */
     private long breakerOpenMs = 10_000;
 
+    /**
+     * Poll data is written on every task poll; the latest poll of each queue + domain is sent as
+     * one message every this many ms.
+     */
+    private long pollDataFlushMs = 10_000;
+
     private final Redis redis = new Redis();
 
     public static class Redis {
@@ -137,6 +143,14 @@ public class PgMirrorProperties {
 
     public void setBreakerOpenMs(long breakerOpenMs) {
         this.breakerOpenMs = breakerOpenMs;
+    }
+
+    public long getPollDataFlushMs() {
+        return pollDataFlushMs;
+    }
+
+    public void setPollDataFlushMs(long pollDataFlushMs) {
+        this.pollDataFlushMs = pollDataFlushMs;
     }
 
     public Redis getRedis() {

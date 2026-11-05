@@ -20,7 +20,10 @@ import java.util.List;
 import java.util.UUID;
 
 import com.netflix.conductor.common.metadata.events.EventExecution;
+import com.netflix.conductor.common.metadata.events.EventHandler;
+import com.netflix.conductor.common.metadata.tasks.PollData;
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
+import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.model.TaskModel;
 import com.netflix.conductor.model.WorkflowModel;
 
@@ -39,6 +42,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * removeWorkflow                   workflow_def_to_workflow, workflow, workflow_pending + removeTask for every task
  * removeFromPendingWorkflow        workflow_pending
  * add/update/removeEventExecution  event_execution
+ * create/updateTaskDef, removeTaskDef            meta_task_def
+ * create/updateWorkflowDef, removeWorkflowDef    meta_workflow_def (+ latest_version of the name)
+ * add/update/removeEventHandler                  meta_event_handler
+ * updateLastPollData (buffered)                  poll_data
  * </pre>
  *
  * Statements are idempotent upserts of the <b>state</b> the models hold after the Scylla write, so
@@ -111,6 +118,36 @@ public class PgMirrorSql {
     static final String EVENT_DELETE =
             "DELETE FROM event_execution WHERE event_handler_name = $1 AND event_name = $2 "
                     + "AND message_id = $3 AND execution_id = $4";
+
+    // ---------- metadata ----------
+    static final String TASK_DEF_UPSERT =
+            "INSERT INTO meta_task_def (name, json_data) VALUES ($1, $2) "
+                    + "ON CONFLICT (name) DO UPDATE SET json_data = EXCLUDED.json_data, "
+                    + "modified_on = CURRENT_TIMESTAMP";
+    static final String TASK_DEF_DELETE = "DELETE FROM meta_task_def WHERE name = $1";
+    static final String WORKFLOW_DEF_UPSERT =
+            "INSERT INTO meta_workflow_def (name, version, json_data) VALUES ($1, $2, $3) "
+                    + "ON CONFLICT (name, version) DO UPDATE SET json_data = EXCLUDED.json_data, "
+                    + "modified_on = CURRENT_TIMESTAMP";
+    static final String WORKFLOW_DEF_DELETE =
+            "DELETE FROM meta_workflow_def WHERE name = $1 AND version = $2";
+    // Postgres keeps latest_version on every row of the name: the highest version that exists.
+    static final String WORKFLOW_DEF_LATEST =
+            "UPDATE meta_workflow_def SET latest_version = "
+                    + "(SELECT max(version) FROM meta_workflow_def WHERE name = $1) WHERE name = $2";
+    // meta_event_handler has no unique key on name: replace the row in one transaction.
+    static final String EVENT_HANDLER_DELETE = "DELETE FROM meta_event_handler WHERE name = $1";
+    static final String EVENT_HANDLER_INSERT =
+            "INSERT INTO meta_event_handler (name, event, active, json_data) VALUES ($1, $2, $3, $4)";
+
+    // ---------- poll data ----------
+    // domain column: "DEFAULT" when the poll had none; the JSON keeps the original. An older poll
+    // never overwrites a newer one.
+    static final String POLL_DATA_UPSERT =
+            "INSERT INTO poll_data (queue_name, domain, json_data, modified_on) "
+                    + "VALUES ($1, $2, $3, CURRENT_TIMESTAMP) ON CONFLICT (queue_name, domain) "
+                    + "DO UPDATE SET json_data = EXCLUDED.json_data, modified_on = CURRENT_TIMESTAMP "
+                    + "WHERE COALESCE((poll_data.json_data::jsonb ->> 'lastPollTime')::bigint, 0) <= $4::bigint";
 
     private final ObjectMapper objectMapper;
 
@@ -251,6 +288,83 @@ public class PgMirrorSql {
                 e.getMessageId(),
                 e.getId(),
                 objectMapper.writeValueAsString(e));
+    }
+
+    // ================= metadata =================
+
+    /** createTaskDef / updateTaskDef: the definition as Scylla stored it. */
+    public PgMirrorMessage taskDef(String op, TaskDef def) throws JsonProcessingException {
+        return msg(
+                op,
+                null,
+                false,
+                List.of(st(TASK_DEF_UPSERT, def.getName(), objectMapper.writeValueAsString(def))));
+    }
+
+    public PgMirrorMessage removeTaskDef(String name) {
+        return msg("removeTaskDef", null, false, List.of(st(TASK_DEF_DELETE, name)));
+    }
+
+    /** createWorkflowDef / updateWorkflowDef: the version row, then latest_version of the name. */
+    public PgMirrorMessage workflowDef(String op, WorkflowDef def) throws JsonProcessingException {
+        return msg(
+                op,
+                null,
+                false,
+                List.of(
+                        st(
+                                WORKFLOW_DEF_UPSERT,
+                                def.getName(),
+                                def.getVersion(),
+                                objectMapper.writeValueAsString(def)),
+                        st(WORKFLOW_DEF_LATEST, def.getName(), def.getName())));
+    }
+
+    public PgMirrorMessage removeWorkflowDef(String name, Integer version) {
+        return msg(
+                "removeWorkflowDef",
+                null,
+                false,
+                List.of(
+                        st(WORKFLOW_DEF_DELETE, name, version),
+                        st(WORKFLOW_DEF_LATEST, name, name)));
+    }
+
+    /** addEventHandler / updateEventHandler. */
+    public PgMirrorMessage eventHandler(String op, EventHandler h) throws JsonProcessingException {
+        return msg(
+                op,
+                null,
+                false,
+                List.of(
+                        st(EVENT_HANDLER_DELETE, h.getName()),
+                        st(
+                                EVENT_HANDLER_INSERT,
+                                h.getName(),
+                                h.getEvent(),
+                                h.isActive(),
+                                objectMapper.writeValueAsString(h))));
+    }
+
+    public PgMirrorMessage removeEventHandler(String name) {
+        return msg("removeEventHandler", null, false, List.of(st(EVENT_HANDLER_DELETE, name)));
+    }
+
+    // ================= poll data =================
+
+    /** The latest poll of each queue + domain since the last flush, as one message. */
+    public PgMirrorMessage pollData(List<PollData> polls) throws JsonProcessingException {
+        List<PgStatement> s = new ArrayList<>();
+        for (PollData p : polls) {
+            s.add(
+                    st(
+                            POLL_DATA_UPSERT,
+                            p.getQueueName(),
+                            p.getDomain() == null ? "DEFAULT" : p.getDomain(),
+                            objectMapper.writeValueAsString(p),
+                            p.getLastPollTime()));
+        }
+        return msg("updatePollData", null, false, s);
     }
 
     // ================= helpers (the same rules as PostgresExecutionDAO) =================

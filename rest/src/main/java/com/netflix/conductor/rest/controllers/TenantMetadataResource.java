@@ -14,15 +14,18 @@ package com.netflix.conductor.rest.controllers;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.netflix.conductor.common.metadata.tasks.PollData;
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.core.exception.NotFoundException;
+import com.netflix.conductor.service.TaskService;
 import com.netflix.conductor.tenant.TenantMetadataConditions;
 import com.netflix.conductor.tenant.TenantMetadataDAO;
 
@@ -34,9 +37,11 @@ import com.netflix.conductor.tenant.TenantMetadataDAO;
 public class TenantMetadataResource {
 
     private final TenantMetadataDAO tenantMetadataDAO;
+    private final TaskService taskService;
 
-    public TenantMetadataResource(TenantMetadataDAO tenantMetadataDAO) {
+    public TenantMetadataResource(TenantMetadataDAO tenantMetadataDAO, TaskService taskService) {
         this.tenantMetadataDAO = tenantMetadataDAO;
+        this.taskService = taskService;
     }
 
     // ---- Workflow Definition Endpoints ----
@@ -102,5 +107,31 @@ public class TenantMetadataResource {
                         () ->
                                 new NotFoundException(
                                         "No such taskType found by name: %s", taskType));
+    }
+
+    // ---- Poll Data Endpoints ----
+
+    /**
+     * Tenant-scoped counterpart of {@code GET /api/tasks/queue/polldata/all}.
+     *
+     * <p>Poll data has no owner field, so it is scoped by queue domain, matching the auth proxy's
+     * routing: workflow start forces {@code taskToDomain["*"] = <tenantId>} and prefixes custom
+     * domains with {@code <tenantId>_}, and task poll injects the same domain. An entry belongs to
+     * the tenant iff its domain is {@code <tenantId>} or starts with {@code <tenantId>_}. Entries
+     * with no domain (polls that bypassed the proxy) belong to no tenant.
+     */
+    @GetMapping("/queue/polldata/all")
+    public List<PollData> getAllPollData(@RequestHeader("X-Tenant-ID") String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            return List.of();
+        }
+        String prefix = tenantId + "_";
+        return taskService.getAllPollData().stream()
+                .filter(
+                        pd ->
+                                pd.getDomain() != null
+                                        && (pd.getDomain().equals(tenantId)
+                                                || pd.getDomain().startsWith(prefix)))
+                .collect(Collectors.toList());
     }
 }

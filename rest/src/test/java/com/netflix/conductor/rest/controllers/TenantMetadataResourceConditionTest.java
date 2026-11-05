@@ -15,6 +15,7 @@ package com.netflix.conductor.rest.controllers;
 import org.junit.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
+import com.netflix.conductor.service.TaskService;
 import com.netflix.conductor.tenant.TenantMetadataDAO;
 
 import static org.junit.Assert.assertFalse;
@@ -29,6 +30,7 @@ public class TenantMetadataResourceConditionTest {
     private final ApplicationContextRunner runner =
             new ApplicationContextRunner()
                     .withBean(TenantMetadataDAO.class, () -> mock(TenantMetadataDAO.class))
+                    .withBean(TaskService.class, () -> mock(TaskService.class))
                     .withUserConfiguration(TenantMetadataResource.class);
 
     @Test

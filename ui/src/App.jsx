@@ -30,6 +30,7 @@ import CustomRoutes from "./plugins/CustomRoutes";
 import AppBarModules from "./plugins/AppBarModules";
 import CustomAppBarButtons from "./plugins/CustomAppBarButtons";
 import RoleGate from "./components/RoleGate";
+import NewUiSwitchBanner from "./components/NewUiSwitchBanner";
 
 import Workbench from "./pages/workbench/Workbench";
 import { getBasename } from "./utils/helpers";
@@ -106,6 +107,7 @@ export default function App() {
         </Toolbar>
       </AppBar>
       <div className={classes.body}>
+        <NewUiSwitchBanner />
         <React.Suspense fallback={<div>Loading...</div>}>
           <Switch>
             <Route exact path="/">

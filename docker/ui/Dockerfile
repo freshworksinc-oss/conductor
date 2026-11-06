@@ -18,4 +18,7 @@ COPY ./ui .
 
 ENV REACT_APP_MONACO_EDITOR_USING_CDN=false
 ENV REACT_APP_ENABLE_ERRORS_INSPECTOR=true
+# Same-host ui switch (auth-proxy conductor-ui-variant cookie); off unless build-arg set.
+ARG REACT_APP_UI_VARIANT_COOKIE_ENABLED=true
+ENV REACT_APP_UI_VARIANT_COOKIE_ENABLED=${REACT_APP_UI_VARIANT_COOKIE_ENABLED}
 CMD [ "yarn", "start" ]

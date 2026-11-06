@@ -1,0 +1,102 @@
+# Black-box regression (G0–G6) against a live Conductor CAAS environment.
+# Test sources live in freshworksinc/ceapps-infra-templates (ci/workflow-engine/test_suite).
+#
+# Required repo secret (read access to ceapps-infra-templates):
+#   CEAPPS_INFRA_TEMPLATES_PAT
+#
+# Runs on self-hosted runners that can reach internal Conductor (staging/sandbox).
+
+name: Environment regression
+
+on:
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "gate (G0,G1,G2,G4,G6) or full (+G3)"
+        required: true
+        default: "gate"
+      env_profile:
+        description: "test_suite config/env profile"
+        required: true
+        default: "staging"
+      infra_templates_ref:
+        description: "ceapps-infra-templates git ref for test_suite"
+        required: true
+        default: "test_suite"
+
+  pull_request:
+    branches:
+      # Production gate: use staging. Trial sample run: staging-v2-fw-commits.
+      - staging-v2-fw-commits
+    paths-ignore:
+      - "conductor-clients/**"
+      - "docs/**"
+      - "**/*.md"
+      - "ui/**"
+      - "ui-next/**"
+
+concurrency:
+  group: environment-regression-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: [self-hosted, Linux, fw-inc-shared]
+    env:
+      TEST_SUITE_DIR: ceapps-infra-templates/ci/workflow-engine/test_suite
+      REGRESSION_TIER: ${{ github.event.inputs.tier || 'gate' }}
+      ENV_PROFILE: ${{ github.event.inputs.env_profile || 'staging' }}
+      INFRA_TEMPLATES_REF: ${{ github.event.inputs.infra_templates_ref || 'test_suite' }}
+      TEST_MODE: poll
+
+    steps:
+      - name: Checkout test suite (ceapps-infra-templates)
+        uses: actions/checkout@v4
+        with:
+          repository: freshworksinc/ceapps-infra-templates
+          ref: ${{ env.INFRA_TEMPLATES_REF }}
+          path: ceapps-infra-templates
+          token: ${{ secrets.CEAPPS_INFRA_TEMPLATES_PAT }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        working-directory: ${{ env.TEST_SUITE_DIR }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tests/requirements.txt
+
+      - name: Resolve Conductor BASE
+        working-directory: ${{ env.TEST_SUITE_DIR }}
+        run: |
+          BASE=$(ENV_PROFILE="${ENV_PROFILE}" python -c "from regression.env_profile import load_profile; print(load_profile()['base_url'])")
+          echo "BASE=$BASE" >> "$GITHUB_ENV"
+          echo "ENV_PROFILE=${ENV_PROFILE} BASE=$BASE"
+
+      - name: Run regression suite
+        working-directory: ${{ env.TEST_SUITE_DIR }}
+        run: |
+          chmod +x run_regression.sh
+          ./run_regression.sh "${REGRESSION_TIER}"
+
+      - name: Generate grouped HTML report
+        if: always()
+        working-directory: ${{ env.TEST_SUITE_DIR }}
+        run: python scripts/generate_report.py
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: environment-regression-${{ github.run_id }}
+          path: |
+            ceapps-infra-templates/ci/workflow-engine/test_suite/reports/junit-regression.xml
+            ceapps-infra-templates/ci/workflow-engine/test_suite/reports/report-regression.html
+            ceapps-infra-templates/ci/workflow-engine/test_suite/reports/test-report.html
+          retention-days: 30

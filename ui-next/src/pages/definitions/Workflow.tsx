@@ -6,6 +6,7 @@ import {
   Tag as TagIcon,
 } from "@phosphor-icons/react";
 import { Button, DataTable, IconButton, NavLink, Paper } from "components";
+import RoleGate from "components/tenant/RoleGate";
 import { FilterObjectItem } from "components/ui/DataTable/state";
 import { ColumnCustomType, LegacyColumn } from "components/ui/DataTable/types";
 import Header from "components/ui/Header";
@@ -498,7 +499,11 @@ export default function WorkflowDefinitions() {
                 startIcon: <PlayIcon />,
               },
               {
-                customButtonElement: <SplitWorkflowDefinitionButton />,
+                customButtonElement: (
+                  <RoleGate minRole="Editor">
+                    <SplitWorkflowDefinitionButton />
+                  </RoleGate>
+                ),
               },
             ]}
           />

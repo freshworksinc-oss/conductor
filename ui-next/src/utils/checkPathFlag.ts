@@ -4,13 +4,23 @@ type PathFlagMap = {
   [key: string]: any;
 };
 
+const aiIntegrationsEnabled = featureFlags.isEnabled(
+  FEATURES.CONDUCTOR_INTEGRATIONS_AI_ENABLED,
+);
+
 const pathFlagMap: PathFlagMap = {
   "/workflowDef": true,
   "/taskDef": true,
   "/get-started": featureFlags.isEnabled(FEATURES.SHOW_GET_STARTED_PAGE),
+  "/api-reference": featureFlags.isEnabled(FEATURES.SHOW_DOCUMENTATION, true),
   "/scheduleDef": featureFlags.isEnabled(FEATURES.SCHEDULER),
   "/schedulerExecs": featureFlags.isEnabled(FEATURES.SCHEDULER),
   "/newScheduleDef": featureFlags.isEnabled(FEATURES.SCHEDULER),
+  "/agents": aiIntegrationsEnabled,
+  "/agentExecutions": aiIntegrationsEnabled,
+  "/agentSecrets": aiIntegrationsEnabled,
+  "/skills": aiIntegrationsEnabled,
+  "/runAgent": aiIntegrationsEnabled,
   "/secrets": featureFlags.isEnabled(FEATURES.SECRETS),
   "/human": featureFlags.isEnabled(FEATURES.HUMAN_TASK),
   "/configure-webhook": featureFlags.isEnabled(FEATURES.WEBHOOKS),
@@ -23,9 +33,15 @@ const pathFlagMap: PathFlagMap = {
 };
 
 const pathFlagMapWithoutSKU: PathFlagMap = {
+  "/api-reference": featureFlags.isEnabled(FEATURES.SHOW_DOCUMENTATION, true),
   "/scheduleDef": featureFlags.isEnabled(FEATURES.SCHEDULER),
   "/schedulerExecs": featureFlags.isEnabled(FEATURES.SCHEDULER),
   "/newScheduleDef": featureFlags.isEnabled(FEATURES.SCHEDULER),
+  "/agents": aiIntegrationsEnabled,
+  "/agentExecutions": aiIntegrationsEnabled,
+  "/agentSecrets": aiIntegrationsEnabled,
+  "/skills": aiIntegrationsEnabled,
+  "/runAgent": aiIntegrationsEnabled,
   "/human": featureFlags.isEnabled(FEATURES.HUMAN_TASK),
   "/ai_prompts": featureFlags.isEnabled(FEATURES.INTEGRATIONS),
   "/integrations": featureFlags.isEnabled(FEATURES.INTEGRATIONS),

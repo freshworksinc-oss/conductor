@@ -27,6 +27,7 @@ import { SnackbarMessage } from "components/ui/SnackbarMessage";
 import { HOT_KEYS_WORKFLOW_DEFINITION } from "utils/constants/common";
 import { UnderlinedText } from "components/ui/UnderlinedText";
 import { useAuth } from "components/features/auth";
+import { useTenantAccess } from "components/tenant";
 import { RunWorkflowButton } from "./RunWorkflowButton";
 
 export interface HeaderActionButtonsProps {
@@ -36,6 +37,8 @@ export const HeadActionButtons: FunctionComponent<HeaderActionButtonsProps> = ({
   definitionActor: service,
 }) => {
   const { isTrialExpired } = useAuth();
+  const { canAccess } = useTenantAccess();
+  const editorLocked = !canAccess("Editor");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSaveRequest = () => {
@@ -89,7 +92,7 @@ export const HeadActionButtons: FunctionComponent<HeaderActionButtonsProps> = ({
       variant: "text",
       tooltip:
         "Delete this version of the workflow definition, previous executions will not be remove (Ctrl D)",
-      disabled: isNewWorkflow || isTrialExpired,
+      disabled: isNewWorkflow || isTrialExpired || editorLocked,
       onClick: handleDeleteRequest,
       "data-testid": "workflow-definition-delete-button",
       sx: { color: (theme) => theme.palette.error.main },
@@ -164,7 +167,12 @@ export const HeadActionButtons: FunctionComponent<HeaderActionButtonsProps> = ({
       switch (joinedKeys) {
         // 1. Save
         case [Key.Control, "S"].join().toLowerCase(): {
-          if (madeChanges && !emptyTaskList && !isTrialExpired) {
+          if (
+            madeChanges &&
+            !emptyTaskList &&
+            !isTrialExpired &&
+            !editorLocked
+          ) {
             debounceSaveRequest();
           }
           break;
@@ -172,7 +180,7 @@ export const HeadActionButtons: FunctionComponent<HeaderActionButtonsProps> = ({
 
         // 2. Save & Run
         case [Key.Control, "E"].join().toLowerCase(): {
-          if (!emptyTaskList && !isTrialExpired) {
+          if (!emptyTaskList && !isTrialExpired && !editorLocked) {
             debounceSaveRequest.cancel();
             handleSaveAndRunRequest();
           }
@@ -187,7 +195,8 @@ export const HeadActionButtons: FunctionComponent<HeaderActionButtonsProps> = ({
             !isNewWorkflow &&
             madeChanges &&
             !emptyTaskList &&
-            !isTrialExpired
+            !isTrialExpired &&
+            !editorLocked
           ) {
             handleSaveAsNewVersionRequest();
           }
@@ -212,7 +221,7 @@ export const HeadActionButtons: FunctionComponent<HeaderActionButtonsProps> = ({
 
         // 6. Delete workflow definition
         case [Key.Control, "D"].join().toLowerCase(): {
-          if (!isNewWorkflow && !isTrialExpired) {
+          if (!isNewWorkflow && !isTrialExpired && !editorLocked) {
             handleDeleteRequest();
           }
 
@@ -222,7 +231,7 @@ export const HeadActionButtons: FunctionComponent<HeaderActionButtonsProps> = ({
         // 7. Save & Create New
         case [Key.Control, "S", "C"].join().toLowerCase(): {
           debounceSaveRequest.cancel();
-          if (madeChanges && !emptyTaskList && !isTrialExpired) {
+          if (madeChanges && !emptyTaskList && !isTrialExpired && !editorLocked) {
             handleSaveAndCreateNewRequest();
           }
           break;
@@ -254,7 +263,9 @@ export const HeadActionButtons: FunctionComponent<HeaderActionButtonsProps> = ({
 
       <SplitButton
         startIcon={<SaveIcon />}
-        disabled={!madeChanges || emptyTaskList || isTrialExpired}
+        disabled={
+          !madeChanges || emptyTaskList || isTrialExpired || editorLocked
+        }
         id={"head-action-save-btn"}
         options={saveSplitButtonOptions}
         primaryOnClick={handleSaveRequest}

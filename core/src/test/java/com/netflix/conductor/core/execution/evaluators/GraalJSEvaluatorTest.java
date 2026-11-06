@@ -17,6 +17,8 @@ import java.util.Map;
 
 import org.junit.Test;
 
+import com.netflix.conductor.core.config.ConductorProperties;
+
 import static org.junit.Assert.*;
 
 /**
@@ -134,7 +136,7 @@ public class GraalJSEvaluatorTest {
     @Test
     public void testIdenticalToJavascriptEvaluator() {
         // Verify GraalJSEvaluator produces identical results to JavascriptEvaluator
-        JavascriptEvaluator jsEval = new JavascriptEvaluator();
+        JavascriptEvaluator jsEval = new JavascriptEvaluator(new ConductorProperties());
         GraalJSEvaluator graalEval = new GraalJSEvaluator();
 
         Map<String, Object> input = new HashMap<>();

@@ -12,6 +12,7 @@
  */
 package com.netflix.conductor.contribs.listener;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -25,12 +26,27 @@ import com.netflix.conductor.core.listener.TaskStatusListener;
 @ConditionalOnProperty(name = "conductor.task-status-listener.type", havingValue = "task_publisher")
 public class TaskStatusPublisherConfiguration {
 
+    /**
+     * Required when workflow listener uses {@code composite} (factory creates its own
+     * RestClientManager for workflow_publisher). Standalone {@code workflow_publisher} already
+     * registers this bean via {@code StatusChangePublisherConfiguration}.
+     */
+    @Bean
+    @ConditionalOnMissingBean(RestClientManager.class)
+    public RestClientManager restClientManager(StatusNotifierNotificationProperties config) {
+        return new RestClientManager(config);
+    }
+
     @Bean
     public TaskStatusListener getTaskStatusListener(
             RestClientManager rcm,
             ExecutionDAOFacade executionDAOFacade,
             StatusNotifierNotificationProperties config) {
 
-        return new TaskStatusPublisher(rcm, executionDAOFacade, config.getSubscribedTaskStatuses());
+        return new TaskStatusPublisher(
+                rcm,
+                executionDAOFacade,
+                config.getSubscribedTaskStatuses(),
+                config.getTaskPayloadType());
     }
 }

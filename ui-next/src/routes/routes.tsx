@@ -99,10 +99,14 @@ const getCoreAuthenticatedRoutes = () => [
     path: "/executions",
     element: <WorkflowSearch />,
   },
-  {
-    path: "/schedulerExecs",
-    element: <SchedulerExecutions />,
-  },
+  ...(featureFlags.isEnabled(FEATURES.SCHEDULER)
+    ? [
+        {
+          path: "/schedulerExecs",
+          element: <SchedulerExecutions />,
+        },
+      ]
+    : []),
   {
     path: "/execution/:id/:taskId?",
     element: <Execution />,
@@ -154,19 +158,22 @@ const getCoreAuthenticatedRoutes = () => [
     element: <EventHandlerDefinition />,
   },
 
-  // Scheduler Definitions
-  {
-    path: SCHEDULER_DEFINITION_URL.BASE,
-    element: <ScheduleDefinitions />,
-  },
-  {
-    path: SCHEDULER_DEFINITION_URL.NAME,
-    element: <Schedule />,
-  },
-  {
-    path: SCHEDULER_DEFINITION_URL.NEW,
-    element: <Schedule />,
-  },
+  ...(featureFlags.isEnabled(FEATURES.SCHEDULER)
+    ? [
+        {
+          path: SCHEDULER_DEFINITION_URL.BASE,
+          element: <ScheduleDefinitions />,
+        },
+        {
+          path: SCHEDULER_DEFINITION_URL.NAME,
+          element: <Schedule />,
+        },
+        {
+          path: SCHEDULER_DEFINITION_URL.NEW,
+          element: <Schedule />,
+        },
+      ]
+    : []),
 
   // Queue Monitor
   {
@@ -184,11 +191,14 @@ const getCoreAuthenticatedRoutes = () => [
     element: <EventMonitorDetail />,
   },
 
-  // API Reference
-  {
-    path: API_REFERENCE_URL.BASE,
-    element: <ApiReferencePage />,
-  },
+  ...(featureFlags.isEnabled(FEATURES.SHOW_DOCUMENTATION, true)
+    ? [
+        {
+          path: API_REFERENCE_URL.BASE,
+          element: <ApiReferencePage />,
+        },
+      ]
+    : []),
 
   // Dev/Debug pages
   {

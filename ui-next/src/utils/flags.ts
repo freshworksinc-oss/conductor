@@ -38,6 +38,13 @@ export const FEATURES = Object.freeze({
   SHOW_FEEDBACK_FORM: "SHOW_FEEDBACK_FORM",
   SHOW_SUPPORT_FORM: "SHOW_SUPPORT_FORM",
   SHOW_DOCUMENTATION: "SHOW_DOCUMENTATION",
+  /** Left-nav Help submenu (Docs / Requests / Support). */
+  SHOW_HELP_MENU: "SHOW_HELP_MENU",
+  /** Help → Docs link (defaults to Orkes docs when unset). */
+  HELP_DOCS_URL: "HELP_DOCS_URL",
+  HELP_DOCS_LABEL: "HELP_DOCS_LABEL",
+  /** Help → Support link (Slack, Zendesk, etc.). Shown when set even if SHOW_SUPPORT_FORM is false. */
+  HELP_SUPPORT_URL: "HELP_SUPPORT_URL",
   SHOW_JOIN_SLACK_COMMUNITY: "SHOW_JOIN_SLACK_COMMUNITY",
   BETA_KEYBOARD_FLOW: "BETA_KEYBOARD_FLOW",
   ENABLE_METRICS_DASHBOARD: "ENABLE_METRICS_DASHBOARD",
@@ -111,6 +118,24 @@ export const FEATURES = Object.freeze({
   // the server will silently ignore.
   TASK_STATUS_LISTENER: "TASK_STATUS_LISTENER",
   TASK_RETRY_TIMEOUT_LIMITS: "TASK_RETRY_TIMEOUT_LIMITS",
+  // Freshworks auth-proxy: tenant dropdown + role gates (userinfo + x-tenant-id cookie).
+  TENANT_SELECTION: "TENANT_SELECTION",
+  /** Sidebar footer: Orkes logo, platform version, copyright. */
+  SHOW_SIDEBAR_VERSION_BLOCK: "SHOW_SIDEBAR_VERSION_BLOCK",
+  /** Browser tab icon; path under public/ (see applyBrandingFromContext). */
+  FAVICON_URL: "FAVICON_URL",
+  /**
+   * When true and Vite dev server (import.meta.env.DEV), use mock tenants if
+   * /api/userinfo fails — local UI without auth-proxy. Ignored in production builds.
+   */
+  LOCAL_DEV_MOCK_USERINFO: "LOCAL_DEV_MOCK_USERINFO",
+  /** Full origin for legacy UI (separate DNS), e.g. https://sandbox-caas-ui.freshworkscorp.com */
+  LEGACY_UI_BASE_URL: "LEGACY_UI_BASE_URL",
+  /**
+   * Same hostname: set conductor-ui-variant cookie; sandbox auth-proxy Lua routes
+   * to legacy UI vs ui-next. Requires UI_VARIANT_COOKIE_NAME in envoy (no local Vite effect).
+   */
+  UI_VARIANT_COOKIE_ENABLED: "UI_VARIANT_COOKIE_ENABLED",
 });
 
 const mapOfLocalStorageValues = Object.fromEntries(

@@ -38,10 +38,24 @@ import {
 
 const isPlayground = featureFlags.isEnabled(FEATURES.PLAYGROUND);
 const hideFeedbackForm = !featureFlags.isEnabled(FEATURES.SHOW_FEEDBACK_FORM);
+const helpDocsUrl = featureFlags.getValue(
+  FEATURES.HELP_DOCS_URL,
+  "https://orkes.io/content/",
+);
+const helpDocsLabel = featureFlags.getValue(FEATURES.HELP_DOCS_LABEL, "Docs");
+const helpSupportUrl = featureFlags.getValue(FEATURES.HELP_SUPPORT_URL, "");
+const defaultSupportUrl = isPlayground
+  ? "https://community.orkes.io/ "
+  : "https://orkeshelp.zendesk.com/hc/en-us/requests/new";
+const supportLinkTo = helpSupportUrl || defaultSupportUrl;
+const hideSupportItem =
+  !featureFlags.isEnabled(FEATURES.SHOW_SUPPORT_FORM) && !helpSupportUrl;
 const hideScheduler = !featureFlags.isEnabled(FEATURES.SCHEDULER);
 const hideAgentspan = !featureFlags.isEnabled(
   FEATURES.CONDUCTOR_INTEGRATIONS_AI_ENABLED,
 );
+const hideHelpMenu = !featureFlags.isEnabled(FEATURES.SHOW_HELP_MENU, true);
+const hideApiDocs = !featureFlags.isEnabled(FEATURES.SHOW_DOCUMENTATION, true);
 
 /**
  * Core sidebar position constants. Root and submenus both use 100, 200, 300, ...
@@ -297,14 +311,14 @@ export function getCoreSidebarItems(open: boolean): MenuItemType[] {
       linkTo: "",
       shortcuts: [],
       hotkeys: "",
-      hidden: false,
+      hidden: hideHelpMenu,
       position: R.helpMenu,
       items: [
         {
           id: "docsItem",
-          title: "Docs",
+          title: helpDocsLabel,
           icon: null,
-          linkTo: "https://orkes.io/content/",
+          linkTo: helpDocsUrl,
           shortcuts: [],
           hotkeys: "",
           hidden: false,
@@ -327,12 +341,10 @@ export function getCoreSidebarItems(open: boolean): MenuItemType[] {
           id: "supportItem",
           title: "Support",
           icon: null,
-          linkTo: isPlayground
-            ? "https://community.orkes.io/ "
-            : "https://orkeshelp.zendesk.com/hc/en-us/requests/new",
+          linkTo: supportLinkTo,
           shortcuts: [],
           hotkeys: "",
-          hidden: false,
+          hidden: hideSupportItem,
           position: H.supportItem,
           isOpenNewTab: true,
         },
@@ -346,7 +358,7 @@ export function getCoreSidebarItems(open: boolean): MenuItemType[] {
       linkTo: "/api-reference",
       shortcuts: [],
       hotkeys: "",
-      hidden: false,
+      hidden: hideApiDocs,
       position: R.swaggerItem,
     },
   ];

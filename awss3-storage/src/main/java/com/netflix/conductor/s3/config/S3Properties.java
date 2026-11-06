@@ -31,6 +31,13 @@ public class S3Properties {
     /** The AWS region of the s3 bucket */
     private String region = "us-east-1";
 
+    /**
+     * Optional key prefix (e.g. "sip/") prepended to every payload object key. Lets multiple
+     * Conductor deployments share one bucket, each namespaced under its own folder. Empty by
+     * default, which keeps keys at the bucket root (workflow/..., task/...).
+     */
+    private String prefix = "";
+
     public String getBucketName() {
         return bucketName;
     }
@@ -53,5 +60,13 @@ public class S3Properties {
 
     public void setRegion(String region) {
         this.region = region;
+    }
+
+    public String getPrefix() {
+        return prefix;
+    }
+
+    public void setPrefix(String prefix) {
+        this.prefix = prefix;
     }
 }

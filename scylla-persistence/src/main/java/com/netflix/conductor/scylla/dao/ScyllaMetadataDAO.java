@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Netflix, Inc.
+ * Copyright 2022 Conductor Authors.
  * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -12,18 +12,16 @@
  */
 package com.netflix.conductor.scylla.dao;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
-import java.util.PriorityQueue;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
-import com.netflix.conductor.scylla.config.ScyllaProperties;
-import com.netflix.conductor.scylla.util.Statements;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,31 +30,45 @@ import com.netflix.conductor.annotations.Trace;
 import com.netflix.conductor.annotations.VisibleForTesting;
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
+import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
+import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.core.exception.ConflictException;
 import com.netflix.conductor.core.exception.TransientException;
 import com.netflix.conductor.dao.MetadataDAO;
+import com.netflix.conductor.dao.PaginatedMetadataDAO;
+import com.netflix.conductor.dao.WorkflowDefIndexDAO;
 import com.netflix.conductor.metrics.Monitors;
+import com.netflix.conductor.scylla.config.ScyllaProperties;
+import com.netflix.conductor.scylla.util.Statements;
 
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.ResultSetFuture;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.exceptions.DriverException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import static com.netflix.conductor.common.metadata.tasks.TaskDef.ONE_HOUR;
 import static com.netflix.conductor.scylla.util.Constants.TASK_DEFINITION_KEY;
 import static com.netflix.conductor.scylla.util.Constants.TASK_DEFS_KEY;
 import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEFINITION_KEY;
 import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_INDEX_KEY;
 import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_NAME_VERSION_KEY;
-import static com.netflix.conductor.common.metadata.tasks.TaskDef.ONE_HOUR;
 
 @Trace
-public class ScyllaMetadataDAO extends ScyllaBaseDAO implements MetadataDAO {
+public class ScyllaMetadataDAO extends ScyllaBaseDAO
+        implements MetadataDAO, PaginatedMetadataDAO, WorkflowDefIndexDAO {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ScyllaMetadataDAO.class);
     private static final String CLASS_NAME = ScyllaMetadataDAO.class.getSimpleName();
     private static final String INDEX_DELIMITER = "/";
+
+    /** Definitions read at the same time when many are needed (a window, not all at once). */
+    private static final int READ_CONCURRENCY = 32;
+
+    private final WorkflowDefIndex defIndex;
+    private final PreparedStatement selectLatestWorkflowDefByNameStatement;
 
     private final PreparedStatement insertWorkflowDefStatement;
     private final PreparedStatement insertWorkflowDefVersionIndexStatement;
@@ -124,6 +136,14 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO implements MetadataDAO {
         this.deleteTaskDefStatement =
                 session.prepare(statements.getDeleteTaskDefStatement())
                         .setConsistencyLevel(properties.getWriteConsistencyLevel());
+        this.selectLatestWorkflowDefByNameStatement =
+                session.prepare(statements.getSelectLatestWorkflowDefByNameStatement())
+                        .setConsistencyLevel(properties.getReadConsistencyLevel());
+        this.defIndex =
+                new WorkflowDefIndex(
+                        this::loadIndexEntries,
+                        properties.getWorkflowDefIndexCacheTtl().toMillis(),
+                        System::currentTimeMillis);
     }
 
     @Override
@@ -178,6 +198,7 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO implements MetadataDAO {
             session.execute(
                     insertWorkflowDefVersionIndexStatement.bind(
                             workflowDefIndex, workflowDefIndex));
+            defIndex.invalidate();
             recordCassandraDaoRequests("createWorkflowDef");
             recordCassandraDaoPayloadSize(
                     "createWorkflowDef", workflowDefinition.length(), "n/a", workflowDef.getName());
@@ -204,6 +225,7 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO implements MetadataDAO {
             session.execute(
                     insertWorkflowDefVersionIndexStatement.bind(
                             workflowDefIndex, workflowDefIndex));
+            defIndex.invalidate();
             recordCassandraDaoRequests("updateWorkflowDef");
             recordCassandraDaoPayloadSize(
                     "updateWorkflowDef", workflowDefinition.length(), "n/a", workflowDef.getName());
@@ -220,12 +242,19 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO implements MetadataDAO {
 
     @Override
     public Optional<WorkflowDef> getLatestWorkflowDef(String name) {
-        List<WorkflowDef> workflowDefList = getAllWorkflowDefVersions(name);
-        if (workflowDefList != null && workflowDefList.size() > 0) {
-            workflowDefList.sort(Comparator.comparingInt(WorkflowDef::getVersion));
-            return Optional.of(workflowDefList.get(workflowDefList.size() - 1));
+        // One row: the highest version. (It used to read the JSON of every version of the name and
+        // sort them, which is very heavy for a name with thousands of versions.)
+        try {
+            recordCassandraDaoRequests("getLatestWorkflowDef", "n/a", name);
+            Row row = session.execute(selectLatestWorkflowDefByNameStatement.bind(name)).one();
+            return Optional.ofNullable(row)
+                    .map(r -> readValue(r.getString(WORKFLOW_DEFINITION_KEY), WorkflowDef.class));
+        } catch (DriverException e) {
+            Monitors.error(CLASS_NAME, "getLatestWorkflowDef");
+            String errorMsg = String.format("Failed to get the latest workflow def: %s", name);
+            LOGGER.error(errorMsg, e);
+            throw new TransientException(errorMsg, e);
         }
-        return Optional.empty();
     }
 
     @Override
@@ -257,6 +286,7 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO implements MetadataDAO {
             session.execute(
                     deleteWorkflowDefIndexStatement.bind(
                             WORKFLOW_DEF_INDEX_KEY, getWorkflowDefIndexValue(name, version)));
+            defIndex.invalidate();
         } catch (DriverException e) {
             Monitors.error(CLASS_NAME, "removeWorkflowDef");
             String errorMsg =
@@ -266,75 +296,188 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO implements MetadataDAO {
         }
     }
 
-    @SuppressWarnings("unchecked")
     @Override
     public List<WorkflowDef> getAllWorkflowDefs() {
+        // Every version of every name: the caller asked for all of it. Read through a window of
+        // concurrent queries instead of one query after another.
+        WorkflowDefIndex.Snapshot index = defIndex.get();
+        List<ImmutablePair<String, Integer>> keys = new ArrayList<>(index.entries());
+        index.versionsByName()
+                .forEach(
+                        (name, versions) ->
+                                versions.forEach(v -> keys.add(ImmutablePair.of(name, v))));
+        return readWorkflowDefs(keys);
+    }
+
+    @Override
+    public List<WorkflowDef> getAllWorkflowDefsLatestVersions() {
+        // The newest version of each name comes from the index; only those definitions are read
+        // (concurrently), and the result is kept with the index until it expires or changes.
+        WorkflowDefIndex.Snapshot index = defIndex.get();
+        List<WorkflowDef> cached = index.latestDefs();
+        if (cached != null) {
+            return new ArrayList<>(cached);
+        }
+        List<WorkflowDef> defs = readWorkflowDefs(latestKeys(index, index.names()));
+        index.latestDefs(Collections.unmodifiableList(defs));
+        return new ArrayList<>(defs);
+    }
+
+    /** Names only, from the index: no definition is read. */
+    @Override
+    public List<String> getWorkflowNames() {
+        return defIndex.get().names();
+    }
+
+    /** The versions of one name, from the index: no definition is read. */
+    @Override
+    public List<WorkflowDefSummary> getWorkflowVersions(String name) {
+        List<WorkflowDefSummary> out = new ArrayList<>();
+        for (int version : defIndex.get().versions(name)) {
+            out.add(summary(name, version));
+        }
+        return out;
+    }
+
+    /** Every name with its versions, from the index: no definition is read. */
+    @Override
+    public Map<String, ? extends Iterable<WorkflowDefSummary>> getWorkflowNamesAndVersions() {
+        Map<String, TreeSet<WorkflowDefSummary>> out = new java.util.TreeMap<>();
+        defIndex.get()
+                .versionsByName()
+                .forEach(
+                        (name, versions) -> {
+                            TreeSet<WorkflowDefSummary> set = new TreeSet<>();
+                            versions.forEach(v -> set.add(summary(name, v)));
+                            out.put(name, set);
+                        });
+        return out;
+    }
+
+    @Override
+    public SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(int start, int size) {
+        return searchWorkflowDefsLatestVersions(start, size, null, null);
+    }
+
+    /**
+     * One page of the latest versions, sorted by name. Only the page's definitions are read; a
+     * filter on the name uses the index, a filter on another field reads the latest definitions
+     * (cached).
+     */
+    @Override
+    public SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(
+            int start, int size, String filterField, String filterValue) {
+        WorkflowDefIndex.Snapshot index = defIndex.get();
+        boolean filtered = filterValue != null && !filterValue.isEmpty();
+        if (filtered && !"name".equals(filterField)) {
+            String wanted = filterValue.toLowerCase(java.util.Locale.ROOT);
+            List<WorkflowDef> matches = new ArrayList<>();
+            for (WorkflowDef def : getAllWorkflowDefsLatestVersions()) {
+                String value = fieldOf(def, filterField);
+                if (value != null && value.toLowerCase(java.util.Locale.ROOT).contains(wanted)) {
+                    matches.add(def);
+                }
+            }
+            matches.sort(Comparator.comparing(WorkflowDef::getName));
+            int from = Math.min(Math.max(start, 0), matches.size());
+            int to = Math.min(from + Math.max(size, 0), matches.size());
+            return new SearchResult<>(matches.size(), new ArrayList<>(matches.subList(from, to)));
+        }
+        List<String> names = index.names();
+        if (filtered) {
+            String wanted = filterValue.toLowerCase(java.util.Locale.ROOT);
+            names.removeIf(n -> !n.toLowerCase(java.util.Locale.ROOT).contains(wanted));
+        }
+        int from = Math.min(Math.max(start, 0), names.size());
+        int to = Math.min(from + Math.max(size, 0), names.size());
+        List<WorkflowDef> page = readWorkflowDefs(latestKeys(index, names.subList(from, to)));
+        return new SearchResult<>(names.size(), page);
+    }
+
+    private static String fieldOf(WorkflowDef def, String field) {
+        switch (field == null ? "" : field) {
+            case "description":
+                return def.getDescription();
+            case "ownerEmail":
+                return def.getOwnerEmail();
+            case "ownerApp":
+                return def.getOwnerApp();
+            default:
+                return def.getName();
+        }
+    }
+
+    private static WorkflowDefSummary summary(String name, int version) {
+        WorkflowDefSummary summary = new WorkflowDefSummary();
+        summary.setName(name);
+        summary.setVersion(version);
+        return summary;
+    }
+
+    private static List<ImmutablePair<String, Integer>> latestKeys(
+            WorkflowDefIndex.Snapshot index, List<String> names) {
+        List<ImmutablePair<String, Integer>> keys = new ArrayList<>(names.size());
+        for (String name : names) {
+            int latest = index.latestVersion(name);
+            if (latest >= 0) {
+                keys.add(ImmutablePair.of(name, latest));
+            }
+        }
+        return keys;
+    }
+
+    /** The raw {@code name/version} strings of the index partition (a scan, nothing parsed). */
+    private List<String> loadIndexEntries() {
         try {
+            recordCassandraDaoRequests("getWorkflowDefIndex");
             ResultSet resultSet =
                     session.execute(selectAllWorkflowDefsStatement.bind(WORKFLOW_DEF_INDEX_KEY));
-            List<Row> rows = resultSet.all();
-            if (rows.size() == 0) {
-                LOGGER.info("No workflow definitions were found.");
-                return Collections.EMPTY_LIST;
+            List<String> entries = new ArrayList<>();
+            for (Row row : resultSet) { // pages are fetched as the loop goes
+                entries.add(row.getString(WORKFLOW_DEF_NAME_VERSION_KEY));
             }
-            return rows.stream()
-                    .map(
-                            row -> {
-                                String defNameVersion =
-                                        row.getString(WORKFLOW_DEF_NAME_VERSION_KEY);
-                                var nameVersion = getWorkflowNameAndVersion(defNameVersion);
-                                return getWorkflowDef(nameVersion.getLeft(), nameVersion.getRight())
-                                        .orElse(null);
-                            })
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
+            return entries;
         } catch (DriverException e) {
-            Monitors.error(CLASS_NAME, "getAllWorkflowDefs");
-            String errorMsg = "Error retrieving all workflow defs";
+            Monitors.error(CLASS_NAME, "getWorkflowDefIndex");
+            String errorMsg = "Error reading the workflow definition index";
             LOGGER.error(errorMsg, e);
             throw new TransientException(errorMsg, e);
         }
     }
 
-    @Override
-    public List<WorkflowDef> getAllWorkflowDefsLatestVersions() {
+    /**
+     * Reads the definitions, up to {@link #READ_CONCURRENCY} queries in flight, results in the
+     * order of the keys (missing ones skipped).
+     */
+    private List<WorkflowDef> readWorkflowDefs(List<ImmutablePair<String, Integer>> keys) {
+        List<WorkflowDef> out = new ArrayList<>(keys.size());
+        ArrayDeque<ResultSetFuture> window = new ArrayDeque<>();
         try {
-            ResultSet resultSet =
-                    session.execute(
-                            selectAllWorkflowDefsLatestVersionsStatement.bind(
-                                    WORKFLOW_DEF_INDEX_KEY));
-            List<Row> rows = resultSet.all();
-            if (rows.size() == 0) {
-                LOGGER.info("No workflow definitions were found.");
-                return Collections.EMPTY_LIST;
-            }
-            Map<String, PriorityQueue<WorkflowDef>> allWorkflowDefs = new HashMap<>();
-
-            for (Row row : rows) {
-                String defNameVersion = row.getString(WORKFLOW_DEF_NAME_VERSION_KEY);
-                var nameVersion = getWorkflowNameAndVersion(defNameVersion);
-                WorkflowDef def =
-                        getWorkflowDef(nameVersion.getLeft(), nameVersion.getRight()).orElse(null);
-                if (def == null) {
-                    continue;
+            for (ImmutablePair<String, Integer> key : keys) {
+                if (window.size() >= READ_CONCURRENCY) {
+                    addRow(out, window.poll());
                 }
-                if (allWorkflowDefs.get(def.getName()) == null) {
-                    allWorkflowDefs.put(
-                            def.getName(),
-                            new PriorityQueue<>(
-                                    (WorkflowDef w1, WorkflowDef w2) ->
-                                            Integer.compare(w2.getVersion(), w1.getVersion())));
-                }
-                allWorkflowDefs.get(def.getName()).add(def);
+                window.add(
+                        session.executeAsync(
+                                selectWorkflowDefStatement.bind(key.getLeft(), key.getRight())));
             }
-            return allWorkflowDefs.values().stream()
-                    .map(PriorityQueue::poll)
-                    .collect(Collectors.toList());
+            while (!window.isEmpty()) {
+                addRow(out, window.poll());
+            }
+            recordCassandraDaoRequests("getWorkflowDefs");
+            return out;
         } catch (DriverException e) {
-            Monitors.error(CLASS_NAME, "getAllWorkflowDefsLatestVersions");
-            String errorMsg = "Error retrieving all workflow defs latest versions";
+            Monitors.error(CLASS_NAME, "getWorkflowDefs");
+            String errorMsg = "Error reading workflow definitions";
             LOGGER.error(errorMsg, e);
             throw new TransientException(errorMsg, e);
+        }
+    }
+
+    private void addRow(List<WorkflowDef> out, ResultSetFuture future) {
+        Row row = future.getUninterruptibly().one();
+        if (row != null) {
+            out.add(readValue(row.getString(WORKFLOW_DEFINITION_KEY), WorkflowDef.class));
         }
     }
 

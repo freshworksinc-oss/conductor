@@ -42,7 +42,14 @@ public class TenantMetadataResource {
     // ---- Workflow Definition Endpoints ----
 
     @GetMapping("/workflow")
-    public List<WorkflowDef> getWorkflowDefs(@RequestHeader("X-Tenant-ID") String tenantId) {
+    public List<WorkflowDef> getWorkflowDefs(
+            @RequestHeader("X-Tenant-ID") String tenantId,
+            @RequestParam(value = "short", required = false) Boolean shortList) {
+        // short=true (the UI's definitions list): latest versions only, as
+        // /workflow/latest-versions
+        if (Boolean.TRUE.equals(shortList)) {
+            return tenantMetadataDAO.getWorkflowDefsLatestVersionsByTenant(tenantId);
+        }
         return tenantMetadataDAO.getWorkflowDefsByTenant(tenantId);
     }
 

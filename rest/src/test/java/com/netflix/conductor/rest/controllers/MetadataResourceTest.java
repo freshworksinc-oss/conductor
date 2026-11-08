@@ -123,7 +123,7 @@ public class MetadataResourceTest {
         listOfWorkflowDef.add(workflowDef);
 
         when(mockMetadataService.getWorkflowDefs()).thenReturn(listOfWorkflowDef);
-        assertEquals(listOfWorkflowDef, metadataResource.getAll(null));
+        assertEquals(listOfWorkflowDef, metadataResource.getAll(null, null));
     }
 
     @Test
@@ -144,9 +144,9 @@ public class MetadataResourceTest {
         listOfWorkflowDef.add(agentDef);
 
         when(mockMetadataService.getWorkflowDefs()).thenReturn(listOfWorkflowDef);
-        assertEquals(List.of(agentDef), metadataResource.getAll("agent"));
-        assertEquals(List.of(plainDef), metadataResource.getAll("workflow"));
-        assertEquals(listOfWorkflowDef, metadataResource.getAll(" "));
+        assertEquals(List.of(agentDef), metadataResource.getAll("agent", null));
+        assertEquals(List.of(plainDef), metadataResource.getAll("workflow", null));
+        assertEquals(listOfWorkflowDef, metadataResource.getAll(" ", null));
     }
 
     @Test
@@ -366,5 +366,19 @@ public class MetadataResourceTest {
         assertEquals(1, result.get(0).getVersion());
         assertEquals(2, result.get(1).getVersion());
         verify(mockMetadataService, times(1)).getWorkflowVersions("my_workflow");
+    }
+
+    @Test
+    public void getAllWithShortListsLatestVersionsOnly() {
+        WorkflowDef latest = new WorkflowDef();
+        latest.setName("w");
+        latest.setVersion(7);
+        when(mockMetadataService.getWorkflowDefsLatestVersions()).thenReturn(List.of(latest));
+
+        List<WorkflowDef> result = metadataResource.getAll(null, true);
+
+        assertEquals(List.of(latest), result);
+        org.mockito.Mockito.verify(mockMetadataService, org.mockito.Mockito.never())
+                .getWorkflowDefs();
     }
 }

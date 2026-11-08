@@ -180,6 +180,16 @@ public class Statements {
                 .getQueryString();
     }
 
+    /** The latest version of one workflow: the highest clustering version, one row. */
+    public String getSelectLatestWorkflowDefByNameStatement() {
+        return QueryBuilder.select(WORKFLOW_DEFINITION_KEY)
+                .from(keyspace, TABLE_WORKFLOW_DEFS)
+                .where(eq(WORKFLOW_DEF_NAME_KEY, bindMarker()))
+                .orderBy(QueryBuilder.desc(WORKFLOW_VERSION_KEY))
+                .limit(1)
+                .getQueryString();
+    }
+
     public String getSelectAllWorkflowDefsLatestVersionsStatement() {
         return QueryBuilder.select()
                 .all()

@@ -24,9 +24,11 @@ import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.core.exception.NotFoundException;
 import com.netflix.conductor.dao.MetadataDAO;
+import com.netflix.conductor.dao.WorkflowDefIndexDAO;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -37,7 +39,11 @@ public class DaoTenantMetadataDAOTest {
 
     @Before
     public void setUp() {
-        metadataDAO = mock(MetadataDAO.class);
+        metadataDAO =
+                mock(
+                        MetadataDAO.class,
+                        org.mockito.Mockito.withSettings()
+                                .extraInterfaces(WorkflowDefIndexDAO.class));
         dao = new DaoTenantMetadataDAO(metadataDAO);
     }
 
@@ -56,8 +62,32 @@ public class DaoTenantMetadataDAOTest {
         return def;
     }
 
+    /**
+     * The persistence holds these definitions: every way the tenant DAO reads them answers from the
+     * same list (all of them, the latest of each name, the names with versions, the versions of a
+     * name), as a real persistence would.
+     */
     private void givenWorkflows(WorkflowDef... defs) {
         when(metadataDAO.getAllWorkflowDefs()).thenReturn(List.of(defs));
+        Map<String, WorkflowDef> latest = new java.util.TreeMap<>();
+        Map<String, java.util.TreeSet<WorkflowDefSummary>> byName = new java.util.TreeMap<>();
+        for (WorkflowDef d : defs) {
+            latest.merge(d.getName(), d, (x, y) -> x.getVersion() >= y.getVersion() ? x : y);
+            WorkflowDefSummary s = new WorkflowDefSummary();
+            s.setName(d.getName());
+            s.setVersion(d.getVersion());
+            s.setCreateTime(d.getCreateTime());
+            byName.computeIfAbsent(d.getName(), k -> new java.util.TreeSet<>()).add(s);
+        }
+        when(metadataDAO.getAllWorkflowDefsLatestVersions())
+                .thenReturn(new java.util.ArrayList<>(latest.values()));
+        doReturn(byName).when((WorkflowDefIndexDAO) metadataDAO).getWorkflowNamesAndVersions();
+        for (Map.Entry<String, WorkflowDef> e : latest.entrySet()) {
+            when(metadataDAO.getLatestWorkflowDef(e.getKey()))
+                    .thenReturn(Optional.of(e.getValue()));
+            when(metadataDAO.getWorkflowVersions(e.getKey()))
+                    .thenReturn(new java.util.ArrayList<>(byName.get(e.getKey())));
+        }
     }
 
     @Test
@@ -121,11 +151,34 @@ public class DaoTenantMetadataDAOTest {
 
     @Test
     public void versionsOfOneWorkflowAreSortedAndScopedToTheTenant() {
-        givenWorkflows(wf("a", 3, "fs"), wf("a", 1, "fs"), wf("a", 2, "other"), wf("b", 1, "fs"));
+        // a name belongs to the tenant when its latest version does; then all its versions are
+        // listed
+        givenWorkflows(wf("a", 3, "fs"), wf("a", 1, "fs"), wf("a", 2, "fs"), wf("b", 1, "fs"));
 
         List<WorkflowDefSummary> versions = dao.getWorkflowVersionsByTenant("fs", "a");
 
-        assertEquals(List.of(1, 3), versions.stream().map(WorkflowDefSummary::getVersion).toList());
+        assertEquals(
+                List.of(1, 2, 3), versions.stream().map(WorkflowDefSummary::getVersion).toList());
+    }
+
+    @Test
+    public void aNameOfAnotherTenantHasNoVersionsForThisOne() {
+        givenWorkflows(wf("a", 3, "other"), wf("a", 1, "other"), wf("b", 1, "fs"));
+
+        assertTrue(dao.getWorkflowVersionsByTenant("fs", "a").isEmpty());
+        assertTrue(dao.getWorkflowVersionsByTenant("fs", "does_not_exist").isEmpty());
+    }
+
+    @Test
+    public void listingNamesAndVersionsNeverReadsEveryDefinition() {
+        // with a persistence that answers from an index, no call may fall back to "all definitions"
+        givenWorkflows(wf("a", 2, "fs"), wf("a", 1, "fs"), wf("b", 1, "other"));
+
+        dao.getWorkflowNamesByTenant("fs");
+        dao.getWorkflowNamesAndVersionsByTenant("fs");
+        dao.getWorkflowVersionsByTenant("fs", "a");
+
+        org.mockito.Mockito.verify(metadataDAO, org.mockito.Mockito.never()).getAllWorkflowDefs();
     }
 
     @Test

@@ -37,6 +37,7 @@ import com.netflix.conductor.core.exception.NotFoundException;
 import com.netflix.conductor.dao.EventHandlerDAO;
 import com.netflix.conductor.dao.MetadataDAO;
 import com.netflix.conductor.dao.PaginatedMetadataDAO;
+import com.netflix.conductor.dao.WorkflowDefIndexDAO;
 import com.netflix.conductor.validations.ValidationContext;
 
 @Service
@@ -294,6 +295,10 @@ public class MetadataServiceImpl implements MetadataService {
     }
 
     public Map<String, ? extends Iterable<WorkflowDefSummary>> getWorkflowNamesAndVersions() {
+        // a persistence with an index of names and versions answers without reading definitions
+        if (metadataDAO instanceof WorkflowDefIndexDAO) {
+            return ((WorkflowDefIndexDAO) metadataDAO).getWorkflowNamesAndVersions();
+        }
         List<WorkflowDef> workflowDefs = metadataDAO.getAllWorkflowDefs();
 
         Map<String, TreeSet<WorkflowDefSummary>> retval = new HashMap<>();

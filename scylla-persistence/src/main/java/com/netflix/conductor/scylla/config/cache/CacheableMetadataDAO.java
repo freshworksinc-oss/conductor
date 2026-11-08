@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Netflix, Inc.
+ * Copyright 2022 Conductor Authors.
  * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -15,15 +15,12 @@ package com.netflix.conductor.scylla.config.cache;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import jakarta.annotation.PostConstruct;
-
-import com.netflix.conductor.scylla.config.ScyllaProperties;
-import com.netflix.conductor.scylla.dao.ScyllaMetadataDAO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.Cache;
@@ -35,13 +32,22 @@ import org.springframework.cache.annotation.Cacheable;
 import com.netflix.conductor.annotations.Trace;
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
+import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
+import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.dao.MetadataDAO;
+import com.netflix.conductor.dao.PaginatedMetadataDAO;
+import com.netflix.conductor.dao.WorkflowDefIndexDAO;
 import com.netflix.conductor.metrics.Monitors;
+import com.netflix.conductor.scylla.config.ScyllaProperties;
+import com.netflix.conductor.scylla.dao.ScyllaMetadataDAO;
+
+import jakarta.annotation.PostConstruct;
 
 import static com.netflix.conductor.scylla.config.cache.CachingConfig.TASK_DEF_CACHE;
 
 @Trace
-public class CacheableMetadataDAO implements MetadataDAO {
+public class CacheableMetadataDAO
+        implements MetadataDAO, PaginatedMetadataDAO, WorkflowDefIndexDAO {
 
     private static final String CLASS_NAME = CacheableMetadataDAO.class.getSimpleName();
 
@@ -146,6 +152,36 @@ public class CacheableMetadataDAO implements MetadataDAO {
     @Override
     public List<WorkflowDef> getAllWorkflowDefsLatestVersions() {
         return scyllaMetadataDAO.getAllWorkflowDefsLatestVersions();
+    }
+
+    // The listings below must reach ScyllaMetadataDAO's own index-based versions. Without these
+    // overrides the MetadataDAO defaults would read every definition through getAllWorkflowDefs().
+
+    @Override
+    public List<String> getWorkflowNames() {
+        return scyllaMetadataDAO.getWorkflowNames();
+    }
+
+    @Override
+    public List<WorkflowDefSummary> getWorkflowVersions(String name) {
+        return scyllaMetadataDAO.getWorkflowVersions(name);
+    }
+
+    @Override
+    public Map<String, ? extends Iterable<WorkflowDefSummary>> getWorkflowNamesAndVersions() {
+        return scyllaMetadataDAO.getWorkflowNamesAndVersions();
+    }
+
+    @Override
+    public SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(int start, int size) {
+        return scyllaMetadataDAO.searchWorkflowDefsLatestVersions(start, size);
+    }
+
+    @Override
+    public SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(
+            int start, int size, String filterField, String filterValue) {
+        return scyllaMetadataDAO.searchWorkflowDefsLatestVersions(
+                start, size, filterField, filterValue);
     }
 
     private List<TaskDef> refreshTaskDefsCache() {

@@ -78,6 +78,14 @@ public class ScyllaProperties {
     private Duration eventHandlerCacheRefreshInterval = Duration.ofSeconds(60);
 
     /**
+     * How long the list of workflow definition names and versions (one short string per definition,
+     * read from the index table) is kept in memory. It is cleared at once on this node when a
+     * definition is created, updated or removed.
+     */
+    @DurationUnit(ChronoUnit.SECONDS)
+    private Duration workflowDefIndexCacheTtl = Duration.ofSeconds(30);
+
+    /**
      * How often buffered poll data is written to Scylla. Poll data is updated on every task poll,
      * so writes are buffered in memory and flushed at this interval (like the Postgres DAO). 0
      * writes on every poll.
@@ -211,6 +219,14 @@ public class ScyllaProperties {
 
     public Duration getEventHandlerCacheRefreshInterval() {
         return eventHandlerCacheRefreshInterval;
+    }
+
+    public Duration getWorkflowDefIndexCacheTtl() {
+        return workflowDefIndexCacheTtl;
+    }
+
+    public void setWorkflowDefIndexCacheTtl(Duration workflowDefIndexCacheTtl) {
+        this.workflowDefIndexCacheTtl = workflowDefIndexCacheTtl;
     }
 
     public void setEventHandlerCacheRefreshInterval(Duration eventHandlerCacheRefreshInterval) {

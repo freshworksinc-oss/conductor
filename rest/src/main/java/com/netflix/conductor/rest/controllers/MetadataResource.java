@@ -94,8 +94,14 @@ public class MetadataResource {
     @Operation(summary = "Retrieves all workflow definition along with blueprint")
     @GetMapping("/workflow")
     public List<WorkflowDef> getAll(
-            @RequestParam(value = "classifier", required = false) String classifier) {
-        List<WorkflowDef> allWorkflows = metadataService.getWorkflowDefs();
+            @RequestParam(value = "classifier", required = false) String classifier,
+            @RequestParam(value = "short", required = false) Boolean shortList) {
+        // short=true (sent by the UI for its definitions list): the latest version of each
+        // workflow instead of every version of every workflow.
+        List<WorkflowDef> allWorkflows =
+                Boolean.TRUE.equals(shortList)
+                        ? metadataService.getWorkflowDefsLatestVersions()
+                        : metadataService.getWorkflowDefs();
         // Optional classifier filter powering e.g. agent def vs workflow def views. The
         // classifier is derived from each def's metadata map: "workflow" matches untagged
         // (plain) defs; any other value matches the derived tag literally.

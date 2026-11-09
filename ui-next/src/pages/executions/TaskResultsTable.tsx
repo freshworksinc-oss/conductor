@@ -307,6 +307,7 @@ export default function ResultsTable({
         onChangePage={(page) => setPage(page)}
         hideSearch
         sortServer
+        sortByDefault={false}
         defaultSortAsc={false}
         onSort={(column, sortDirection) => {
           if (column.id) {

@@ -1,4 +1,8 @@
-import { dynamicSort, formatForColumn } from "./helpers";
+import {
+  defaultFilterItemsSorter,
+  dynamicSort,
+  formatForColumn,
+} from "./helpers";
 import { ColumnCustomType, LegacyColumn } from "./types";
 
 const cases = [
@@ -178,6 +182,33 @@ describe("Compare 2 objects for sorting", () => {
       expect(result).toEqual(expected);
     },
   );
+});
+
+describe("defaultFilterItemsSorter", () => {
+  test("does not throw when a row is null", () => {
+    const items = [
+      { taskId: "a", updateTime: 2 },
+      null,
+      { taskId: "b", updateTime: 1 },
+    ];
+
+    expect(() => defaultFilterItemsSorter([...items])).not.toThrow();
+    const sorted = defaultFilterItemsSorter([...items]);
+    expect(sorted[0]?.taskId).toBe("a");
+    expect(sorted[1]?.taskId).toBe("b");
+    expect(sorted[2]).toBeNull();
+  });
+
+  test("still sorts by updateTime descending when rows are valid", () => {
+    const items = [
+      { updateTime: 1 },
+      { updateTime: 3 },
+      { updateTime: 2 },
+    ];
+    const sorted = defaultFilterItemsSorter([...items]);
+
+    expect(sorted.map((row) => row.updateTime)).toEqual([3, 2, 1]);
+  });
 });
 
 describe("formatForColumn", () => {

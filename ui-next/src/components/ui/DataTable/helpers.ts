@@ -33,6 +33,13 @@ const compareString = (preString: string, curString: string) =>
 
 export const defaultFilterItemsSorter = (filteredItems: any[]) =>
   filteredItems?.sort((preValue, curValue) => {
+    if (preValue == null || curValue == null) {
+      if (preValue == null && curValue == null) {
+        return 0;
+      }
+      return preValue == null ? 1 : -1;
+    }
+
     if (preValue.updateTime) {
       if (curValue.updateTime) {
         return curValue.updateTime - preValue.updateTime;

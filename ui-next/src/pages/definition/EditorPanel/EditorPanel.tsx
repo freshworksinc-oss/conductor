@@ -16,7 +16,9 @@ import { EditorTabs } from "./EditorTabs";
 import { TabContent } from "./TabContent";
 import { useDefinitionMachine } from "./hook";
 
-const agentEnabled = featureFlags.isEnabled(FEATURES.SHOW_AGENT);
+const agentEnabled =
+  featureFlags.isEnabled(FEATURES.CONDUCTOR_INTEGRATIONS_AI_ENABLED) &&
+  featureFlags.isEnabled(FEATURES.SHOW_AGENT, true);
 
 // Type helper for ActorRef with children property (exists at runtime but not in types)
 type ActorRefWithChildren<T extends EventObject> = ActorRef<T> & {

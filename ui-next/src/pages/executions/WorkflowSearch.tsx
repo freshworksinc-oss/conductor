@@ -20,6 +20,7 @@ import { tryToJson } from "utils/utils";
 import { featureFlags, FEATURES } from "utils/flags";
 import SplitWorkflowDefinitionButton from "./SplitWorkflowDefinitionButton/SplitWorkflowDefinitionButton";
 import ImportBpmnButton from "./SplitWorkflowDefinitionButton/ImportBpmnButton";
+import LegacyUiSwitchBanner from "components/LegacyUiSwitchBanner";
 import AdvancedSearch from "./workflowSearchComponents/AdvancedSearch";
 import BasicSearch from "./workflowSearchComponents/BasicSearch";
 
@@ -206,6 +207,7 @@ export default function WorkflowPanel({
         title={pageTitle}
         actions={headerActions !== undefined ? headerActions : defaultActions}
       />
+      {classifier === "workflow" && !agentName ? <LegacyUiSwitchBanner /> : null}
       <SectionContainer>
         {asQuery ? (
           <AdvancedSearch

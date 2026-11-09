@@ -12,6 +12,28 @@ import { isLibPeerExternal } from "./vite.lib-peer-external";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageDir = __dirname;
 
+/** Bake REACT_APP_* / VITE_* into the app bundle (flags.ts, fetch.ts, etc.). */
+function buildProcessEnvForDefine(
+  mode: string,
+  envFromFiles: Record<string, string>,
+): Record<string, string> {
+  const merged: Record<string, string> = { NODE_ENV: mode };
+  for (const [key, value] of Object.entries(envFromFiles)) {
+    if (key.startsWith("VITE_") || key.startsWith("REACT_APP_")) {
+      merged[key] = value;
+    }
+  }
+  for (const [key, value] of Object.entries(process.env)) {
+    if (
+      (key.startsWith("VITE_") || key.startsWith("REACT_APP_")) &&
+      value !== undefined
+    ) {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
 // Plugin to inject build-time hash into context.js script tag
 function contextJsHashPlugin(): Plugin {
   const buildHash = createHash("md5")
@@ -142,7 +164,9 @@ export default defineConfig(({ mode }) => {
       ],
     },
     define: {
-      "process.env": {},
+      "process.env": JSON.stringify(
+        buildProcessEnvForDefine(mode, env),
+      ),
     },
     preview: {
       port: 1234,

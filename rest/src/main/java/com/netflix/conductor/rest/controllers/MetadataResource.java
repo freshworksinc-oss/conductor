@@ -31,6 +31,7 @@ import com.netflix.conductor.common.metadata.workflow.WorkflowClassifier;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.common.model.BulkResponse;
+import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.core.exception.ConflictException;
 import com.netflix.conductor.service.MetadataService;
 
@@ -93,8 +94,14 @@ public class MetadataResource {
     @Operation(summary = "Retrieves all workflow definition along with blueprint")
     @GetMapping("/workflow")
     public List<WorkflowDef> getAll(
-            @RequestParam(value = "classifier", required = false) String classifier) {
-        List<WorkflowDef> allWorkflows = metadataService.getWorkflowDefs();
+            @RequestParam(value = "classifier", required = false) String classifier,
+            @RequestParam(value = "short", required = false) Boolean shortList) {
+        // short=true (sent by the UI for its definitions list): the latest version of each
+        // workflow instead of every version of every workflow.
+        List<WorkflowDef> allWorkflows =
+                Boolean.TRUE.equals(shortList)
+                        ? metadataService.getWorkflowDefsLatestVersions()
+                        : metadataService.getWorkflowDefs();
         // Optional classifier filter powering e.g. agent def vs workflow def views. The
         // classifier is derived from each def's metadata map: "workflow" matches untagged
         // (plain) defs; any other value matches the derived tag literally.
@@ -129,10 +136,36 @@ public class MetadataResource {
         return metadataService.getWorkflowVersions(name);
     }
 
-    @Operation(summary = "Returns only the latest version of all workflow definitions")
+    @Operation(
+            summary = "Returns only the latest version of all workflow definitions",
+            description =
+                    "Supports optional pagination via start and size parameters. "
+                            + "Supports optional filtering via filterField and filterValue parameters "
+                            + "for case-insensitive substring matching on a specified field. "
+                            + "When no parameters are provided, returns all latest versions wrapped in SearchResult for consistency.")
     @GetMapping("/workflow/latest-versions")
-    public List<WorkflowDef> getAllWorkflowsWithLatestVersions() {
-        return metadataService.getWorkflowDefsLatestVersions();
+    public SearchResult<WorkflowDef> getAllWorkflowsWithLatestVersions(
+            @RequestParam(value = "start", required = false) Integer start,
+            @RequestParam(value = "size", required = false) Integer size,
+            @RequestParam(value = "filterField", required = false) String filterField,
+            @RequestParam(value = "filterValue", required = false) String filterValue) {
+        if (start != null || size != null || filterField != null || filterValue != null) {
+            int effectiveStart = start != null ? start : 0;
+            int effectiveSize = size != null ? size : 100;
+
+            if (filterField != null
+                    && filterValue != null
+                    && !filterField.isEmpty()
+                    && !filterValue.isEmpty()) {
+                return metadataService.searchWorkflowDefsLatestVersions(
+                        effectiveStart, effectiveSize, filterField, filterValue);
+            }
+
+            return metadataService.searchWorkflowDefsLatestVersions(effectiveStart, effectiveSize);
+        }
+
+        List<WorkflowDef> allWorkflows = metadataService.getWorkflowDefsLatestVersions();
+        return new SearchResult<>(allWorkflows.size(), allWorkflows);
     }
 
     @DeleteMapping("/workflow/{name}/{version}")

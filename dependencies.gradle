@@ -22,16 +22,17 @@ ext {
     revBval = '2.0.5'
     revCassandra = '3.10.2'
     revCassandraUnit = '3.11.2.0'
+    revScylla = '3.11.5.0'
     revCommonsIo = '2.18.0'
     revElasticSearch6 = '6.8.23'
     revEmbeddedRedis = '0.6'
     revEurekaClient = '2.0.2'
     revGroovy = '4.0.21'
     revGrpc = '1.75.0'
-    revGuava = '33.2.1-jre'
+    revGuava = '33.7.2-jre'
     revHamcrestAllMatchers = '1.8'
     revHealth = '1.1.4'
-    revPostgres = '42.7.11'
+    revPostgres = '42.7.14'
 
     // -----------------------------------------------------------------
     // PINNED DEPENDENCIES — do not upgrade without reading the notes.
@@ -77,8 +78,8 @@ ext {
     // amqp-client is BOM-managed (rabbit-amqp-client.version); the Spring Boot 3.5 BOM pins 5.25.0,
     // which carries CVE-2026-63337 / CVE-2026-69219 / CVE-2026-69220. 5.35.0 clears all three.
     // The override that actually forces this into the shaded jar lives in springboot-bom-overrides.gradle.
-    revAmqpClient = '5.35.0'
-    revKafka = '3.9.1'
+    revAmqpClient = '5.37.0'
+    revKafka = '3.9.2'
     // micrometer-core carries CVE-2026-40983 / CVE-2026-40984, fixed in 1.15.12.
     revMicrometer = '1.15.12'
     // Registry artifacts (otlp / cloudwatch2 / azure-monitor / prometheus) track revMicrometer.
@@ -110,10 +111,20 @@ ext {
     revSpringAI = '1.1.6'
     revJSonSchemaValidator  = '1.0.73'
     mongodb = '4.11.0'
+    revMongodbDriver = '5.11.1'
     pgVector = '0.1.4'
     sqliteJdbc = '3.49.0.0'
-    revMCP = '1.0.0'
+    // Security: mcp-core 1.0.0 GHSA / CVE in RapidFort; 1.1.5 is the minimum patched 1.x line.
+    revMCP = '1.1.5'
     revCommonsCompress = '1.26.1'
     pinecone = '3.0.0'
     revFlexmark = '0.64.8'
+    // RapidFort: GHSA-rcgg-9c38-7xpx / GHSA-ccrj-gw8r-854m — minimum 1.62.0 / 1.67.0 on api.
+    revOpenTelemetryApi = '1.67.0'
+    // OpenSearch 2.x client line; opensearch-common CVE-2025-9624 fixed in 2.19.4+.
+    revOpenSearch2Client = '2.19.4'
+    // opensearch-java is versioned separately from the server/REST clients and has no 2.19.4.
+    revOpenSearchJavaClient = '2.18.0'
+    revOpenTelemetryJavaagent = '2.28.0'
+    revPyroscope = '0.14.0'
 }

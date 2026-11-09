@@ -9,6 +9,8 @@ import { QueryClientProvider } from "react-query";
 import { ReactQueryDevtools } from "react-query/devtools";
 import { RouterProvider } from "react-router";
 import { logger } from "utils";
+import { applyBrandingFromContext } from "utils/applyBrandingFromContext";
+import { ensureDefaultNewUiVariantCookie } from "utils/legacyUiSwitch";
 import {
   HOT_KEYS_SIDEBAR,
   HOT_KEYS_WORKFLOW_DEFINITION,
@@ -20,6 +22,7 @@ import {
 import "./monacoLoader";
 import { router } from "./routes/router";
 import "./index.css";
+import { TenantProvider } from "components/tenant";
 import { queryClient } from "./queryClient";
 import { Provider as ThemeProvider } from "./theme/material/provider";
 
@@ -32,6 +35,9 @@ if (import.meta.env.VITE_XSTATE_INSPECT === "true") {
 }
 
 logger.log("Monitoring disabled");
+
+applyBrandingFromContext();
+ensureDefaultNewUiVariantCookie();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -46,9 +52,11 @@ createRoot(document.getElementById("root")!).render(
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <MessageProvider>
-            <CssBaseline />
-            <ReactQueryDevtools initialIsOpen={false} />
-            <RouterProvider router={router} />
+            <TenantProvider>
+              <CssBaseline />
+              <ReactQueryDevtools initialIsOpen={false} />
+              <RouterProvider router={router} />
+            </TenantProvider>
           </MessageProvider>
         </ThemeProvider>
       </QueryClientProvider>

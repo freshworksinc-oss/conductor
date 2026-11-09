@@ -109,7 +109,10 @@ public class WorkflowStatusListenerFactory {
                 subscribedWorkflowStatuses);
         RestClientManager restClientManager = new RestClientManager(properties);
         return new StatusChangePublisher(
-                restClientManager, executionDAOFacade, subscribedWorkflowStatuses);
+                restClientManager,
+                executionDAOFacade,
+                subscribedWorkflowStatuses,
+                properties.getWorkflowPayloadType());
     }
 
     /**

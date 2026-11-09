@@ -11,6 +11,8 @@ vi.mock("utils/flags", () => ({
     INTEGRATIONS: "INTEGRATIONS",
     REMOTE_SERVICES: "REMOTE_SERVICES",
     SKU_ENABLED: "SKU_ENABLED",
+    SHOW_DOCUMENTATION: "SHOW_DOCUMENTATION",
+    CONDUCTOR_INTEGRATIONS_AI_ENABLED: "CONDUCTOR_INTEGRATIONS_AI_ENABLED",
   },
   featureFlags: {
     isEnabled: vi.fn(() => false),
@@ -35,6 +37,16 @@ describe("checkPathFlag", () => {
 
     it("blocks /newScheduleDef when SCHEDULER flag is disabled", () => {
       expect(checkPathFlag("/newScheduleDef")).toBe(false);
+    });
+  });
+
+  describe("documentation and agents — gated when flags disabled", () => {
+    it("blocks /api-reference when SHOW_DOCUMENTATION is disabled", () => {
+      expect(checkPathFlag("/api-reference")).toBe(false);
+    });
+
+    it("blocks /agents when CONDUCTOR_INTEGRATIONS_AI_ENABLED is disabled", () => {
+      expect(checkPathFlag("/agents")).toBe(false);
     });
   });
 

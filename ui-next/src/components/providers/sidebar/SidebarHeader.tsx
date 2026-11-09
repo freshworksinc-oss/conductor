@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { Key } from "ts-key-enum";
 import { ClosedLogo } from "./ClosedLogo";
 import { OpenedLogo } from "./OpenedLogo";
+import { TenantSelect } from "components/tenant";
 import { SidebarItem } from "./SidebarItem";
 import { MenuItemType } from "./types";
 
@@ -98,6 +99,7 @@ export const SidebarHeader = ({
               <SidebarItem item={searchItem} open={open} />
             </Box>
           )}
+          {open ? <TenantSelect /> : null}
         </>
       )}
     </Box>

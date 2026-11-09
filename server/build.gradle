@@ -43,9 +43,12 @@ dependencies {
     implementation project(':conductor-redis-configuration')
     implementation project(':conductor-redis-persistence')
     implementation project(':conductor-cassandra-persistence')
+    implementation project(':conductor-scylla-persistence')
     implementation project(':conductor-postgres-persistence')
+    implementation project(':conductor-pg-mirror')
     implementation project(':conductor-mysql-persistence')
     implementation project(':conductor-sqlite-persistence')
+    implementation("io.pyroscope:agent:0.14.0")
 
     // Indexing backend selection (build-time) to avoid Lucene conflicts between ES and OS
     def indexingBackend = project.findProperty('indexingBackend') ?: 'elasticsearch'
@@ -107,6 +110,9 @@ dependencies {
 
     implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${revSpringDoc}"
 
+    //Continuous profiling
+    implementation "io.pyroscope:agent:${revPyroscope}"
+
 
     runtimeOnly "org.glassfish.jaxb:jaxb-runtime:${revJAXB}"
 
@@ -124,6 +130,30 @@ dependencies {
     testImplementation "io.grpc:grpc-protobuf:${revGrpc}"
     testImplementation "io.grpc:grpc-stub:${revGrpc}"
 }
+
+configurations {
+    otelJAR
+}
+
+// scylla-driver-core is a drop-in fork of cassandra-driver-core 3.x with the same
+// com.datastax.driver.core packages. Keep only one on the server classpath.
+configurations.all {
+    resolutionStrategy.dependencySubstitution {
+        substitute module('com.datastax.cassandra:cassandra-driver-core') using module("com.scylladb:scylla-driver-core:${revScylla}")
+    }
+}
+
+dependencies {
+    otelJAR "io.opentelemetry.javaagent:opentelemetry-javaagent:${revOpenTelemetryJavaagent}"
+}
+
+task downloadOTELJAR(type: Copy) {
+    from configurations.otelJAR
+    into 'build/libs'
+    rename { 'opentelemetry-javaagent.jar' }
+}
+
+build.dependsOn downloadOTELJAR
 
 jar {
     enabled = true

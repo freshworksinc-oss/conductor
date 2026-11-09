@@ -46,6 +46,9 @@ public class StatusChangePublisherConfiguration {
             StatusNotifierNotificationProperties config) {
 
         return new StatusChangePublisher(
-                restClientManager, executionDAOFacade, config.getSubscribedWorkflowStatuses());
+                restClientManager,
+                executionDAOFacade,
+                config.getSubscribedWorkflowStatuses(),
+                config.getWorkflowPayloadType());
     }
 }

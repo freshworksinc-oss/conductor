@@ -87,7 +87,12 @@ import {
 import EventHandlerDefinition from "../pages/definition/EventHandler/EventHandler";
 import Execution from "../pages/execution/Execution";
 import TaskQueue from "../pages/queueMonitor/TaskQueue";
+import { schedulerRouteElement } from "components/features/scheduler/schedulerBackendGate";
 import { Schedule } from "../pages/scheduler";
+
+const GatedSchedulerExecutions = schedulerRouteElement(SchedulerExecutions);
+const GatedScheduleDefinitions = schedulerRouteElement(ScheduleDefinitions);
+const GatedSchedule = schedulerRouteElement(Schedule);
 
 /**
  * Core authenticated routes (OSS)
@@ -99,10 +104,14 @@ const getCoreAuthenticatedRoutes = () => [
     path: "/executions",
     element: <WorkflowSearch />,
   },
-  {
-    path: "/schedulerExecs",
-    element: <SchedulerExecutions />,
-  },
+  ...(featureFlags.isEnabled(FEATURES.SCHEDULER)
+    ? [
+        {
+          path: "/schedulerExecs",
+          element: <GatedSchedulerExecutions />,
+        },
+      ]
+    : []),
   {
     path: "/execution/:id/:taskId?",
     element: <Execution />,
@@ -154,19 +163,22 @@ const getCoreAuthenticatedRoutes = () => [
     element: <EventHandlerDefinition />,
   },
 
-  // Scheduler Definitions
-  {
-    path: SCHEDULER_DEFINITION_URL.BASE,
-    element: <ScheduleDefinitions />,
-  },
-  {
-    path: SCHEDULER_DEFINITION_URL.NAME,
-    element: <Schedule />,
-  },
-  {
-    path: SCHEDULER_DEFINITION_URL.NEW,
-    element: <Schedule />,
-  },
+  ...(featureFlags.isEnabled(FEATURES.SCHEDULER)
+    ? [
+        {
+          path: SCHEDULER_DEFINITION_URL.BASE,
+          element: <GatedScheduleDefinitions />,
+        },
+        {
+          path: SCHEDULER_DEFINITION_URL.NAME,
+          element: <GatedSchedule />,
+        },
+        {
+          path: SCHEDULER_DEFINITION_URL.NEW,
+          element: <GatedSchedule />,
+        },
+      ]
+    : []),
 
   // Queue Monitor
   {
@@ -184,11 +196,14 @@ const getCoreAuthenticatedRoutes = () => [
     element: <EventMonitorDetail />,
   },
 
-  // API Reference
-  {
-    path: API_REFERENCE_URL.BASE,
-    element: <ApiReferencePage />,
-  },
+  ...(featureFlags.isEnabled(FEATURES.SHOW_DOCUMENTATION, true)
+    ? [
+        {
+          path: API_REFERENCE_URL.BASE,
+          element: <ApiReferencePage />,
+        },
+      ]
+    : []),
 
   // Dev/Debug pages
   {

@@ -1,0 +1,24 @@
+// Mirrors what a non-Postgres Conductor (Scylla) writes into the Postgres tables of the Postgres
+// Conductor, as a queue of ready-to-run SQL statements in Redis. Off unless
+// conductor.pg-mirror.enabled=true. See README.md.
+dependencies {
+    implementation project(':conductor-common')
+    implementation project(':conductor-core')
+    implementation "redis.clients:jedis:${revJedis}"
+    implementation "com.fasterxml.jackson.core:jackson-databind"
+    implementation "org.apache.commons:commons-lang3"
+    compileOnly 'org.springframework.boot:spring-boot-starter'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.retry:spring-retry'
+    // equivalence test: the Postgres DAO is the reference for what the statements must produce
+    testImplementation project(':conductor-postgres-persistence')
+    testImplementation project(':conductor-common-persistence')
+    testImplementation "org.postgresql:postgresql:${revPostgres}"
+    testImplementation "org.springframework.boot:spring-boot-starter-jdbc"
+}
+
+test {
+    // the equivalence test shares two databases
+    maxParallelForks = 1
+}

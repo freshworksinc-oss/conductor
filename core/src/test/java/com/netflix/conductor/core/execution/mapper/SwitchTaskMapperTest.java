@@ -24,6 +24,7 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.test.context.ContextConfiguration;
@@ -34,6 +35,7 @@ import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.tasks.TaskType;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowTask;
+import com.netflix.conductor.core.config.ConductorProperties;
 import com.netflix.conductor.core.execution.DeciderService;
 import com.netflix.conductor.core.execution.evaluators.Evaluator;
 import com.netflix.conductor.core.execution.evaluators.JavascriptEvaluator;
@@ -65,7 +67,13 @@ public class SwitchTaskMapperTest {
 
     @Configuration
     @ComponentScan(basePackageClasses = {Evaluator.class}) // load all Evaluator beans.
-    public static class TestConfiguration {}
+    public static class TestConfiguration {
+
+        @Bean
+        public ConductorProperties conductorProperties() {
+            return new ConductorProperties();
+        }
+    }
 
     @Autowired private ObjectMapper objectMapper;
 

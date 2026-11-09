@@ -19,6 +19,7 @@ import com.netflix.conductor.core.config.ConductorProperties
 import com.netflix.conductor.core.dal.ExecutionDAOFacade
 import com.netflix.conductor.core.execution.tasks.SubWorkflow
 import com.netflix.conductor.core.execution.tasks.WorkflowSystemTask
+import com.netflix.conductor.core.listener.TaskStatusListener
 import com.netflix.conductor.core.utils.IDGenerator
 import com.netflix.conductor.core.utils.ParametersUtils
 import com.netflix.conductor.core.utils.QueueUtils
@@ -40,6 +41,7 @@ class AsyncSystemTaskExecutorTest extends Specification {
     MetadataDAO metadataDAO
     WorkflowExecutor workflowExecutor
     ParametersUtils parametersUtils
+    TaskStatusListener taskStatusListener
 
     @Subject
     AsyncSystemTaskExecutor executor
@@ -53,6 +55,7 @@ class AsyncSystemTaskExecutorTest extends Specification {
         metadataDAO = Mock(MetadataDAO.class)
         workflowExecutor = Mock(WorkflowExecutor.class)
         parametersUtils = Mock(ParametersUtils.class)
+        taskStatusListener = Mock(TaskStatusListener.class)
 
         workflowSystemTask = Mock(WorkflowSystemTask.class) {
             isTaskRetrievalRequired() >> true
@@ -63,7 +66,7 @@ class AsyncSystemTaskExecutorTest extends Specification {
 
         parametersUtils.substituteSecrets(_) >> { args -> args[0] }
 
-        executor = new AsyncSystemTaskExecutor(executionDAOFacade, queueDAO, metadataDAO, properties, workflowExecutor, parametersUtils)
+        executor = new AsyncSystemTaskExecutor(executionDAOFacade, queueDAO, metadataDAO, properties, workflowExecutor, parametersUtils, taskStatusListener)
     }
 
     // this is not strictly a unit test, but its essential to test AsyncSystemTaskExecutor with SubWorkflow
@@ -462,7 +465,7 @@ class AsyncSystemTaskExecutorTest extends Specification {
     def "Execute preserves a callback interval set by the system task"() {
         given:
         properties.systemTaskWorkerCallbackDuration = Duration.ofSeconds(30)
-        executor = new AsyncSystemTaskExecutor(executionDAOFacade, queueDAO, metadataDAO, properties, workflowExecutor, parametersUtils)
+        executor = new AsyncSystemTaskExecutor(executionDAOFacade, queueDAO, metadataDAO, properties, workflowExecutor, parametersUtils, taskStatusListener)
 
         String workflowId = "workflowId"
         String taskId = "taskId"

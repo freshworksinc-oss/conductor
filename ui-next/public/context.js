@@ -9,6 +9,8 @@ window.conductor = {
 
   // OSS Core Features
   SCHEDULER: true,
+  // Scylla: keep conductor.scheduler.enabled=false on server; UI still shows Scheduler nav.
+  SCHEDULER_BACKEND_ENABLED: false,
   TASK_VISIBILITY: "READ",
   CREATOR_ENABLE_CREATOR: true,
   CREATOR_ENABLE_REAFLOW_DIAGRAM: true,

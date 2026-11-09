@@ -87,7 +87,12 @@ import {
 import EventHandlerDefinition from "../pages/definition/EventHandler/EventHandler";
 import Execution from "../pages/execution/Execution";
 import TaskQueue from "../pages/queueMonitor/TaskQueue";
+import { schedulerRouteElement } from "components/features/scheduler/schedulerBackendGate";
 import { Schedule } from "../pages/scheduler";
+
+const GatedSchedulerExecutions = schedulerRouteElement(SchedulerExecutions);
+const GatedScheduleDefinitions = schedulerRouteElement(ScheduleDefinitions);
+const GatedSchedule = schedulerRouteElement(Schedule);
 
 /**
  * Core authenticated routes (OSS)
@@ -103,7 +108,7 @@ const getCoreAuthenticatedRoutes = () => [
     ? [
         {
           path: "/schedulerExecs",
-          element: <SchedulerExecutions />,
+          element: <GatedSchedulerExecutions />,
         },
       ]
     : []),
@@ -162,15 +167,15 @@ const getCoreAuthenticatedRoutes = () => [
     ? [
         {
           path: SCHEDULER_DEFINITION_URL.BASE,
-          element: <ScheduleDefinitions />,
+          element: <GatedScheduleDefinitions />,
         },
         {
           path: SCHEDULER_DEFINITION_URL.NAME,
-          element: <Schedule />,
+          element: <GatedSchedule />,
         },
         {
           path: SCHEDULER_DEFINITION_URL.NEW,
-          element: <Schedule />,
+          element: <GatedSchedule />,
         },
       ]
     : []),

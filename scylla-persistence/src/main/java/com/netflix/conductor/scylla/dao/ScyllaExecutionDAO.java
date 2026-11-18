@@ -122,6 +122,10 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     protected final PreparedStatement deleteTaskLookupStatement;
     protected final PreparedStatement deleteTaskDefLimitStatement;
     protected final PreparedStatement deleteEventExecutionStatement;
+    protected final PreparedStatement insertPendingWorkflowStatement;
+    protected final PreparedStatement deletePendingWorkflowStatement;
+    protected final PreparedStatement selectCountPendingWorkflowsStatement;
+    protected final PreparedStatement selectCountTaskDefLimitStatement;
 
     protected final int eventExecutionsTTL;
     private RedisLock redisLock;
@@ -267,6 +271,18 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         this.deleteEventExecutionStatement =
                 session.prepare(statements.getDeleteEventExecutionsStatement())
                         .setConsistencyLevel(properties.getWriteConsistencyLevel());
+        this.insertPendingWorkflowStatement =
+                session.prepare(statements.getInsertPendingWorkflowStatement())
+                        .setConsistencyLevel(properties.getWriteConsistencyLevel());
+        this.deletePendingWorkflowStatement =
+                session.prepare(statements.getDeletePendingWorkflowStatement())
+                        .setConsistencyLevel(properties.getWriteConsistencyLevel());
+        this.selectCountPendingWorkflowsStatement =
+                session.prepare(statements.getSelectCountPendingWorkflowsStatement())
+                        .setConsistencyLevel(properties.getReadConsistencyLevel());
+        this.selectCountTaskDefLimitStatement =
+                session.prepare(statements.getSelectCountTaskDefLimitStatement())
+                        .setConsistencyLevel(properties.getReadConsistencyLevel());
     }
 
     @Override
@@ -752,6 +768,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                             owner.getTenantId(),
                             owner.getAccountId()));
             ownerCache.put(workflow.getWorkflowId(), owner);
+            syncPendingWorkflow(workflow);
 
             workflow.setTasks(tasks);
             return workflow.getWorkflowId();
@@ -822,6 +839,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                                 correlationId,
                                 currentVersion));
         if (resultSet.wasApplied()) {
+            syncPendingWorkflow(workflow);
             LOGGER.debug(
                     "Updated workflow with isRetry {} - current status {} for workflowId {} with version {}",
                     isRetry,
@@ -895,6 +913,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                 throw new TransientException(errorMsg);
             }
             ownerCache.invalidate(workflowId);
+            removePendingWorkflow(workflow.getWorkflowName(), workflowId);
         }
         return removed;
     }
@@ -910,12 +929,56 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     }
 
     /**
-     * No-op: Scylla keeps no pending-workflows table, so there is nothing to remove. Conductor
-     * calls this on every terminate; throwing here made terminate return 500 after the workflow
-     * was already terminated.
+     * Removes the workflow from workflow_pending. Best effort and never throws: Conductor calls
+     * this on every terminate, and throwing made terminate return 500 after the workflow was
+     * already terminated.
      */
     @Override
-    public void removeFromPendingWorkflow(String workflowType, String workflowId) {}
+    public void removeFromPendingWorkflow(String workflowType, String workflowId) {
+        removePendingWorkflow(workflowType, workflowId);
+    }
+
+    /**
+     * Mirrors PostgresExecutionDAO: a non-terminal workflow is (re-)added to workflow_pending on
+     * every write, a terminal one removed. Re-adding on each update self-heals rows that were
+     * missed (e.g. workflows created before tracking existed, or migrated from Postgres). Best
+     * effort: a tracking failure only skews workflow_running and must not fail the workflow write.
+     */
+    private void syncPendingWorkflow(WorkflowModel workflow) {
+        if (!properties.isQueueMetricsEnabled()
+                || workflow.getStatus() == null
+                || StringUtils.isBlank(workflow.getWorkflowName())) {
+            return;
+        }
+        if (workflow.getStatus().isTerminal()) {
+            removePendingWorkflow(workflow.getWorkflowName(), workflow.getWorkflowId());
+            return;
+        }
+        try {
+            session.execute(
+                    insertPendingWorkflowStatement.bind(
+                            workflow.getWorkflowName(), UUID.fromString(workflow.getWorkflowId())));
+        } catch (DriverException | IllegalArgumentException e) {
+            Monitors.error(CLASS_NAME, "addPendingWorkflow");
+            LOGGER.warn(
+                    "Failed to add workflow {} to workflow_pending", workflow.getWorkflowId(), e);
+        }
+    }
+
+    private void removePendingWorkflow(String workflowType, String workflowId) {
+        if (!properties.isQueueMetricsEnabled()
+                || StringUtils.isBlank(workflowType)
+                || StringUtils.isBlank(workflowId)) {
+            return;
+        }
+        try {
+            session.execute(
+                    deletePendingWorkflowStatement.bind(workflowType, UUID.fromString(workflowId)));
+        } catch (DriverException | IllegalArgumentException e) {
+            Monitors.error(CLASS_NAME, "removePendingWorkflow");
+            LOGGER.warn("Failed to remove workflow {} from workflow_pending", workflowId, e);
+        }
+    }
 
     @Override
     public WorkflowModel getWorkflow(String workflowId) {
@@ -1065,21 +1128,72 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
     }
 
     /**
-     * This is a dummy implementation and this feature is not implemented for Cassandra backed
-     * Conductor
+     * Number of non-terminal workflows of a type, from workflow_pending (as Postgres: COUNT(*) FROM
+     * workflow_pending WHERE workflow_type = ?).
      */
     @Override
     public long getPendingWorkflowCount(String workflowName) {
-        throw new UnsupportedOperationException(
-                "This method is not implemented in ScyllaExecutionDAO. Please use ExecutionDAOFacade instead.");
+        if (!properties.isQueueMetricsEnabled()) {
+            throw new UnsupportedOperationException(
+                    "Pending workflow count needs conductor.scylla.queue-metrics-enabled=true");
+        }
+        try {
+            recordCassandraDaoRequests("getPendingWorkflowCount", "n/a", workflowName);
+            Row row =
+                    session.execute(selectCountPendingWorkflowsStatement.bind(workflowName)).one();
+            return row == null ? 0L : row.getLong(0);
+        } catch (DriverException e) {
+            Monitors.error(CLASS_NAME, "getPendingWorkflowCount");
+            String errorMsg =
+                    String.format("Failed to get pending workflow count for: %s", workflowName);
+            LOGGER.error(errorMsg, e);
+            throw new TransientException(errorMsg, e);
+        }
     }
 
     /**
-     * This is used to retrieve the total number of tasks in progress for a given task definition
+     * Number of IN_PROGRESS tasks of a task def, from task_def_limit (as Postgres: COUNT(*) FROM
+     * task_in_progress WHERE task_def_name = ? AND in_progress_status = true).
      */
     @Override
     public long getInProgressTaskCount(String taskDefName) {
-        return 0L;
+        if (!isTaskDefLimitTracked()) {
+            return 0L;
+        }
+        try {
+            recordCassandraDaoRequests("getInProgressTaskCount", taskDefName, "n/a");
+            Row row = session.execute(selectCountTaskDefLimitStatement.bind(taskDefName)).one();
+            return row == null ? 0L : row.getLong(0);
+        } catch (DriverException e) {
+            Monitors.error(CLASS_NAME, "getInProgressTaskCount");
+            String errorMsg =
+                    String.format("Failed to get in progress task count for: %s", taskDefName);
+            LOGGER.error(errorMsg, e);
+            throw new TransientException(errorMsg, e);
+        }
+    }
+
+    /**
+     * task_def_limit holds the IN_PROGRESS tasks of each task def. It is maintained when
+     * concurrency limits are enforced or execution stats are tracked; exceedsLimit still only
+     * enforces limits when concurrencyLimitEnabled is set.
+     */
+    /**
+     * Whether a task being removed may still have a task_def_limit row. Concurrency-limited tasks
+     * always did; with queue metrics every IN_PROGRESS task has one until it turns terminal, so a
+     * task removed before finishing (e.g. its workflow deleted) must be cleaned up too. Terminal
+     * tasks were already removed on their terminal update, so no extra delete (tombstone) for them.
+     */
+    private boolean isInTaskDefLimit(TaskModel task) {
+        boolean concurrencyLimited =
+                task.getTaskDefinition().isPresent()
+                        && task.getTaskDefinition().get().concurrencyLimit() > 0;
+        boolean unfinished = task.getStatus() != null && !task.getStatus().isTerminal();
+        return concurrencyLimited || unfinished;
+    }
+
+    private boolean isTaskDefLimitTracked() {
+        return isConcurrencyLimitEnabled() || properties.isQueueMetricsEnabled();
     }
 
     /**
@@ -1238,7 +1352,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
 
     @Override
     public void addTaskToLimit(TaskModel task) {
-        if (!isConcurrencyLimitEnabled()) {
+        if (!isTaskDefLimitTracked()) {
             return;
         }
         try {
@@ -1257,13 +1371,16 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                             "Error updating taskDefLimit for task - %s:%s in workflow: %s",
                             task.getTaskDefName(), task.getTaskId(), task.getWorkflowInstanceId());
             LOGGER.error(errorMsg, e);
-            throw new TransientException(errorMsg, e);
+            // Only limit enforcement depends on this row; for stats tracking it is best effort.
+            if (isConcurrencyLimitEnabled()) {
+                throw new TransientException(errorMsg, e);
+            }
         }
     }
 
     @Override
     public void removeTaskFromLimit(TaskModel task) {
-        if (!isConcurrencyLimitEnabled()) {
+        if (!isTaskDefLimitTracked()) {
             return;
         }
         try {
@@ -1279,7 +1396,10 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                             "Error updating taskDefLimit for task - %s:%s in workflow: %s",
                             task.getTaskDefName(), task.getTaskId(), task.getWorkflowInstanceId());
             LOGGER.error(errorMsg, e);
-            throw new TransientException(errorMsg, e);
+            // Only limit enforcement depends on this row; for stats tracking it is best effort.
+            if (isConcurrencyLimitEnabled()) {
+                throw new TransientException(errorMsg, e);
+            }
         }
     }
 
@@ -1313,8 +1433,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
                             UUID.fromString(task.getWorkflowInstanceId()),
                             correlationId));
             ResultSet resultSet = session.execute(batchStatement);
-            if (task.getTaskDefinition().isPresent()
-                    && task.getTaskDefinition().get().concurrencyLimit() > 0) {
+            if (isInTaskDefLimit(task)) {
                 removeTaskFromLimit(task);
             }
             return resultSet.wasApplied();
@@ -1331,8 +1450,7 @@ public class ScyllaExecutionDAO extends ScyllaBaseDAO
         try {
             recordCassandraDaoRequests(
                     "removeTaskLookup", task.getTaskType(), task.getWorkflowType());
-            if (task.getTaskDefinition().isPresent()
-                    && task.getTaskDefinition().get().concurrencyLimit() > 0) {
+            if (isInTaskDefLimit(task)) {
                 removeTaskFromLimit(task);
             }
             // workflow_lookup holds the workflow's shard and owner, so it is only deleted with the

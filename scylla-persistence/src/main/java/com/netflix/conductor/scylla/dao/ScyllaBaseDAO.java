@@ -119,6 +119,7 @@ public abstract class ScyllaBaseDAO {
                 session.execute(getCreateEventHandlersTableStatement());
                 session.execute(getCreateEventExecutionsTableStatement());
                 session.execute(getCreatePollDataTableStatement());
+                session.execute(getCreateWorkflowPendingTableStatement());
                 // Owner columns for tables created before they existed (CREATE IF NOT EXISTS
                 // leaves existing tables untouched).
                 addColumnIfMissing(TABLE_WORKFLOWS, TENANT_ID_KEY, true);
@@ -173,6 +174,18 @@ public abstract class ScyllaBaseDAO {
                                 properties.getReplicationFactorKey(),
                                 properties.getReplicationFactorValue()))
                 .durableWrites(true)
+                .getQueryString();
+    }
+
+    /**
+     * workflow_pending: one partition per workflow type, one row per non-terminal workflow. Mirrors
+     * the Postgres workflow_pending table; backs getPendingWorkflowCount.
+     */
+    private String getCreateWorkflowPendingTableStatement() {
+        return SchemaBuilder.createTable(properties.getKeyspace(), TABLE_WORKFLOW_PENDING)
+                .ifNotExists()
+                .addPartitionKey(WORKFLOW_TYPE_KEY, DataType.text())
+                .addClusteringColumn(WORKFLOW_ID_KEY, DataType.uuid())
                 .getQueryString();
     }
 

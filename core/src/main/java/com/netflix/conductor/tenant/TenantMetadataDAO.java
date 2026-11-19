@@ -12,13 +12,16 @@
  */
 package com.netflix.conductor.tenant;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
+import com.netflix.conductor.common.run.SearchResult;
 
 /**
  * Read-only, tenant-scoped view of workflow and task definitions: a definition belongs to the
@@ -36,6 +39,52 @@ public interface TenantMetadataDAO {
 
     /** The latest version of each workflow definition owned by the tenant, ordered by name. */
     List<WorkflowDef> getWorkflowDefsLatestVersionsByTenant(String tenantId);
+
+    /**
+     * One page of {@link #getWorkflowDefsLatestVersionsByTenant}, same contract as {@code GET
+     * /api/metadata/workflow/latest-versions}: when {@code filterField} and {@code filterValue} are
+     * both non-empty, only definitions whose field ({@code name}, {@code description}, {@code
+     * ownerEmail}, {@code ownerApp}; anything else means {@code name}) contains the value
+     * (case-insensitive) are counted and returned. {@code totalHits} is the filtered count.
+     *
+     * <p>The default pages the full tenant list in memory; implementations with a cheaper way
+     * override it.
+     */
+    default SearchResult<WorkflowDef> searchWorkflowDefsLatestVersionsByTenant(
+            String tenantId, int start, int size, String filterField, String filterValue) {
+        List<WorkflowDef> matches = getWorkflowDefsLatestVersionsByTenant(tenantId);
+        if (matches == null) {
+            matches = List.of();
+        }
+        if (filterValue != null && !filterValue.isEmpty()) {
+            String wanted = filterValue.toLowerCase(Locale.ROOT);
+            matches =
+                    matches.stream()
+                            .filter(
+                                    def -> {
+                                        String value = fieldOf(def, filterField);
+                                        return value != null
+                                                && value.toLowerCase(Locale.ROOT).contains(wanted);
+                                    })
+                            .toList();
+        }
+        int from = Math.min(Math.max(start, 0), matches.size());
+        int to = Math.min(from + Math.max(size, 0), matches.size());
+        return new SearchResult<>(matches.size(), new ArrayList<>(matches.subList(from, to)));
+    }
+
+    private static String fieldOf(WorkflowDef def, String field) {
+        switch (field == null ? "" : field) {
+            case "description":
+                return def.getDescription();
+            case "ownerEmail":
+                return def.getOwnerEmail();
+            case "ownerApp":
+                return def.getOwnerApp();
+            default:
+                return def.getName();
+        }
+    }
 
     /** The tenant's workflow names with a summary of each version. */
     Map<String, List<WorkflowDefSummary>> getWorkflowNamesAndVersionsByTenant(String tenantId);

@@ -15,8 +15,9 @@ package com.netflix.conductor.scylla.dao;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeSet;
@@ -35,6 +36,7 @@ import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.core.exception.ConflictException;
 import com.netflix.conductor.core.exception.TransientException;
 import com.netflix.conductor.dao.MetadataDAO;
+import com.netflix.conductor.dao.OwnerScopedMetadataDAO;
 import com.netflix.conductor.dao.PaginatedMetadataDAO;
 import com.netflix.conductor.dao.WorkflowDefIndexDAO;
 import com.netflix.conductor.metrics.Monitors;
@@ -58,7 +60,7 @@ import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_NAME_VERS
 
 @Trace
 public class ScyllaMetadataDAO extends ScyllaBaseDAO
-        implements MetadataDAO, PaginatedMetadataDAO, WorkflowDefIndexDAO {
+        implements MetadataDAO, PaginatedMetadataDAO, WorkflowDefIndexDAO, OwnerScopedMetadataDAO {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ScyllaMetadataDAO.class);
     private static final String CLASS_NAME = ScyllaMetadataDAO.class.getSimpleName();
@@ -311,16 +313,90 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO
 
     @Override
     public List<WorkflowDef> getAllWorkflowDefsLatestVersions() {
-        // The newest version of each name comes from the index; only those definitions are read
-        // (concurrently), and the result is kept with the index until it expires or changes.
-        WorkflowDefIndex.Snapshot index = defIndex.get();
+        return new ArrayList<>(latestDefs(defIndex.get()));
+    }
+
+    /**
+     * The latest definition of every name, sorted by name. The newest version of each name comes
+     * from the index; only those definitions are read (concurrently), and the result is kept with
+     * the index until it expires or changes. Unmodifiable: callers copy before changing it.
+     */
+    private List<WorkflowDef> latestDefs(WorkflowDefIndex.Snapshot index) {
         List<WorkflowDef> cached = index.latestDefs();
         if (cached != null) {
-            return new ArrayList<>(cached);
+            return cached;
         }
-        List<WorkflowDef> defs = readWorkflowDefs(latestKeys(index, index.names()));
-        index.latestDefs(Collections.unmodifiableList(defs));
-        return new ArrayList<>(defs);
+        List<WorkflowDef> defs =
+                Collections.unmodifiableList(readWorkflowDefs(latestKeys(index, index.names())));
+        index.latestDefs(defs);
+        return defs;
+    }
+
+    /**
+     * {@link #latestDefs} grouped by {@code ownerApp}, each list sorted by name; built once per
+     * index snapshot, so a tenant listing is a map lookup instead of a filter over every name.
+     * Definitions without an owner are in no group.
+     */
+    private Map<String, List<WorkflowDef>> latestByOwner(WorkflowDefIndex.Snapshot index) {
+        Map<String, List<WorkflowDef>> cached = index.latestByOwner();
+        if (cached != null) {
+            return cached;
+        }
+        Map<String, List<WorkflowDef>> byOwner = new HashMap<>();
+        for (WorkflowDef def : latestDefs(index)) { // already in name order
+            if (def.getOwnerApp() != null) {
+                byOwner.computeIfAbsent(def.getOwnerApp(), k -> new ArrayList<>()).add(def);
+            }
+        }
+        byOwner.replaceAll((owner, defs) -> Collections.unmodifiableList(defs));
+        Map<String, List<WorkflowDef>> built = Collections.unmodifiableMap(byOwner);
+        index.latestByOwner(built);
+        return built;
+    }
+
+    private List<WorkflowDef> ownedLatest(WorkflowDefIndex.Snapshot index, String ownerApp) {
+        if (ownerApp == null) {
+            return List.of();
+        }
+        return latestByOwner(index).getOrDefault(ownerApp, List.of());
+    }
+
+    @Override
+    public List<String> getWorkflowNamesByOwner(String ownerApp) {
+        List<WorkflowDef> owned = ownedLatest(defIndex.get(), ownerApp);
+        List<String> names = new ArrayList<>(owned.size());
+        owned.forEach(def -> names.add(def.getName()));
+        return names;
+    }
+
+    @Override
+    public List<WorkflowDef> getWorkflowDefsLatestVersionsByOwner(String ownerApp) {
+        return new ArrayList<>(ownedLatest(defIndex.get(), ownerApp));
+    }
+
+    /** One page of the owner's latest definitions; nothing is read beyond the cached latest. */
+    @Override
+    public SearchResult<WorkflowDef> searchWorkflowDefsLatestVersionsByOwner(
+            String ownerApp, int start, int size, String filterField, String filterValue) {
+        return filterAndPage(
+                ownedLatest(defIndex.get(), ownerApp), start, size, filterField, filterValue);
+    }
+
+    /**
+     * Every version of the owner's names that the owner owns. Only those names' versions are read
+     * (through the index, concurrently), not every definition of every tenant.
+     */
+    @Override
+    public List<WorkflowDef> getWorkflowDefsByOwner(String ownerApp) {
+        WorkflowDefIndex.Snapshot index = defIndex.get();
+        List<ImmutablePair<String, Integer>> keys = new ArrayList<>();
+        for (WorkflowDef latest : ownedLatest(index, ownerApp)) {
+            String name = latest.getName();
+            index.versions(name).forEach(v -> keys.add(ImmutablePair.of(name, v)));
+        }
+        List<WorkflowDef> defs = readWorkflowDefs(keys); // name order, then ascending version
+        defs.removeIf(def -> !ownerApp.equals(def.getOwnerApp()));
+        return defs;
     }
 
     /** Names only, from the index: no definition is read. */
@@ -370,18 +446,7 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO
         WorkflowDefIndex.Snapshot index = defIndex.get();
         boolean filtered = filterValue != null && !filterValue.isEmpty();
         if (filtered && !"name".equals(filterField)) {
-            String wanted = filterValue.toLowerCase(java.util.Locale.ROOT);
-            List<WorkflowDef> matches = new ArrayList<>();
-            for (WorkflowDef def : getAllWorkflowDefsLatestVersions()) {
-                String value = fieldOf(def, filterField);
-                if (value != null && value.toLowerCase(java.util.Locale.ROOT).contains(wanted)) {
-                    matches.add(def);
-                }
-            }
-            matches.sort(Comparator.comparing(WorkflowDef::getName));
-            int from = Math.min(Math.max(start, 0), matches.size());
-            int to = Math.min(from + Math.max(size, 0), matches.size());
-            return new SearchResult<>(matches.size(), new ArrayList<>(matches.subList(from, to)));
+            return filterAndPage(latestDefs(index), start, size, filterField, filterValue);
         }
         List<String> names = index.names();
         if (filtered) {
@@ -392,6 +457,29 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO
         int to = Math.min(from + Math.max(size, 0), names.size());
         List<WorkflowDef> page = readWorkflowDefs(latestKeys(index, names.subList(from, to)));
         return new SearchResult<>(names.size(), page);
+    }
+
+    /**
+     * One page of {@code defs} (already sorted by name), keeping only the definitions whose field
+     * contains the value (case-insensitive) when a filter is given. The total is the filtered
+     * count.
+     */
+    private static SearchResult<WorkflowDef> filterAndPage(
+            List<WorkflowDef> defs, int start, int size, String filterField, String filterValue) {
+        List<WorkflowDef> matches = defs;
+        if (filterValue != null && !filterValue.isEmpty()) {
+            String wanted = filterValue.toLowerCase(Locale.ROOT);
+            matches = new ArrayList<>();
+            for (WorkflowDef def : defs) {
+                String value = fieldOf(def, filterField);
+                if (value != null && value.toLowerCase(Locale.ROOT).contains(wanted)) {
+                    matches.add(def);
+                }
+            }
+        }
+        int from = Math.min(Math.max(start, 0), matches.size());
+        int to = Math.min(from + Math.max(size, 0), matches.size());
+        return new SearchResult<>(matches.size(), new ArrayList<>(matches.subList(from, to)));
     }
 
     private static String fieldOf(WorkflowDef def, String field) {

@@ -22,8 +22,10 @@ import org.junit.Test;
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
+import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.core.exception.NotFoundException;
 import com.netflix.conductor.dao.MetadataDAO;
+import com.netflix.conductor.dao.OwnerScopedMetadataDAO;
 import com.netflix.conductor.dao.WorkflowDefIndexDAO;
 
 import static org.junit.Assert.assertEquals;
@@ -235,5 +237,105 @@ public class DaoTenantMetadataDAOTest {
         assertTrue(dao.getWorkflowDefsLatestVersionsByTenant("fs").isEmpty());
         assertTrue(dao.getWorkflowNamesByTenant("fs").isEmpty());
         assertTrue(dao.getTaskDefsByTenant("fs").isEmpty());
+        assertEquals(
+                0,
+                dao.searchWorkflowDefsLatestVersionsByTenant("fs", 0, 10, null, null)
+                        .getTotalHits());
+    }
+
+    // ---- paging without a per-owner persistence (in memory over the tenant list) ----
+
+    @Test
+    public void pagesTheTenantsLatestVersionsWithTheTotalOfTheWholeList() {
+        givenWorkflows(
+                wf("a_flow", 1, "fs"),
+                wf("b_flow", 1, "fs"),
+                wf("c_flow", 1, "other"),
+                wf("d_flow", 1, "fs"));
+
+        SearchResult<WorkflowDef> first =
+                dao.searchWorkflowDefsLatestVersionsByTenant("fs", 0, 2, null, null);
+        SearchResult<WorkflowDef> second =
+                dao.searchWorkflowDefsLatestVersionsByTenant("fs", 2, 2, null, null);
+        SearchResult<WorkflowDef> beyond =
+                dao.searchWorkflowDefsLatestVersionsByTenant("fs", 9, 2, null, null);
+
+        assertEquals(3, first.getTotalHits());
+        assertEquals(List.of("a_flow", "b_flow"), names(first.getResults()));
+        assertEquals(List.of("d_flow"), names(second.getResults()));
+        assertEquals(3, beyond.getTotalHits());
+        assertTrue(beyond.getResults().isEmpty());
+    }
+
+    @Test
+    public void aFilterNarrowsThePageAndTheTotal() {
+        WorkflowDef billing = wf("b_flow", 1, "fs");
+        billing.setDescription("Billing sync");
+        givenWorkflows(wf("a_flow", 1, "fs"), billing, wf("billing_other", 1, "other"));
+
+        SearchResult<WorkflowDef> byDescription =
+                dao.searchWorkflowDefsLatestVersionsByTenant("fs", 0, 10, "description", "BILL");
+        SearchResult<WorkflowDef> byName =
+                dao.searchWorkflowDefsLatestVersionsByTenant("fs", 0, 10, "name", "a_");
+
+        assertEquals(1, byDescription.getTotalHits());
+        assertEquals(List.of("b_flow"), names(byDescription.getResults()));
+        assertEquals(List.of("a_flow"), names(byName.getResults()));
+    }
+
+    // ---- with a per-owner persistence (Scylla): its listings are used, nothing is filtered ----
+
+    @Test
+    public void aPerOwnerPersistenceAnswersTheWorkflowListingsWithoutReadingEveryDefinition() {
+        MetadataDAO scoped =
+                mock(
+                        MetadataDAO.class,
+                        org.mockito.Mockito.withSettings()
+                                .extraInterfaces(
+                                        WorkflowDefIndexDAO.class, OwnerScopedMetadataDAO.class));
+        OwnerScopedMetadataDAO owner = (OwnerScopedMetadataDAO) scoped;
+        List<WorkflowDef> latest = List.of(wf("a_flow", 2, "fs"));
+        List<WorkflowDef> all = List.of(wf("a_flow", 1, "fs"), wf("a_flow", 2, "fs"));
+        SearchResult<WorkflowDef> page = new SearchResult<>(7, latest);
+        when(owner.getWorkflowNamesByOwner("fs")).thenReturn(List.of("a_flow"));
+        when(owner.getWorkflowDefsLatestVersionsByOwner("fs")).thenReturn(latest);
+        when(owner.getWorkflowDefsByOwner("fs")).thenReturn(all);
+        when(owner.searchWorkflowDefsLatestVersionsByOwner("fs", 5, 1, "name", "a"))
+                .thenReturn(page);
+        DaoTenantMetadataDAO scopedDao = new DaoTenantMetadataDAO(scoped);
+
+        assertEquals(List.of("a_flow"), scopedDao.getWorkflowNamesByTenant("fs"));
+        assertEquals(latest, scopedDao.getWorkflowDefsLatestVersionsByTenant("fs"));
+        assertEquals(all, scopedDao.getWorkflowDefsByTenant("fs"));
+        assertEquals(
+                page, scopedDao.searchWorkflowDefsLatestVersionsByTenant("fs", 5, 1, "name", "a"));
+
+        org.mockito.Mockito.verify(scoped, org.mockito.Mockito.never()).getAllWorkflowDefs();
+        org.mockito.Mockito.verify(scoped, org.mockito.Mockito.never())
+                .getAllWorkflowDefsLatestVersions();
+    }
+
+    @Test
+    public void aPerOwnerPersistenceIsNotAskedForANullTenant() {
+        MetadataDAO scoped =
+                mock(
+                        MetadataDAO.class,
+                        org.mockito.Mockito.withSettings()
+                                .extraInterfaces(OwnerScopedMetadataDAO.class));
+        DaoTenantMetadataDAO scopedDao = new DaoTenantMetadataDAO(scoped);
+
+        assertTrue(scopedDao.getWorkflowNamesByTenant(null).isEmpty());
+        assertTrue(scopedDao.getWorkflowDefsLatestVersionsByTenant(null).isEmpty());
+        assertTrue(scopedDao.getWorkflowDefsByTenant(null).isEmpty());
+        assertEquals(
+                0,
+                scopedDao
+                        .searchWorkflowDefsLatestVersionsByTenant(null, 0, 10, null, null)
+                        .getTotalHits());
+        org.mockito.Mockito.verifyNoInteractions(scoped);
+    }
+
+    private static List<String> names(List<WorkflowDef> defs) {
+        return defs.stream().map(WorkflowDef::getName).toList();
     }
 }

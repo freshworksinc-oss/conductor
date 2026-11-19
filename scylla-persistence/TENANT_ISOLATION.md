@@ -195,8 +195,27 @@ add tenant columns to definition tables in this change.
 only the definitions whose `ownerApp` is that tenant. No property chooses where
 it reads from: it follows `conductor.db.type`. With `postgres` it reads the
 Postgres `meta_*` tables. With anything else, Scylla included, it reads the
-persistence's own definitions through `MetadataDAO` and filters on `ownerApp` in
-memory, with the same exact-match rule, so Scylla needs no Postgres.
+persistence's own definitions through `MetadataDAO`, with the same exact-match
+rule on `ownerApp`, so Scylla needs no Postgres.
+
+On Scylla the workflow listings come from a per-tenant view of the latest
+definitions (`OwnerScopedMetadataDAO`). The view is built once per
+workflow-definition index snapshot (`conductor.scylla.workflow-def-index-cache-ttl`,
+rebuilt at once on this node after a create, update or remove). A name belongs
+to the tenant whose `ownerApp` is on its **latest** version:
+
+| Tenant endpoint | Reads |
+|---|---|
+| `GET /workflow?short=true` and `/workflow/latest-versions` | the tenant's slice of the view, nothing else |
+| `GET /workflow/latest-versions?start=&size=&filterField=&filterValue=` | one page of that slice; `totalHits` is the tenant's (filtered) count |
+| `GET /workflow` (every version) | every version of the tenant's names only, keeping the versions the tenant owns |
+| `GET /workflow/names`, `/workflow/names-and-versions` | the view and the name index; no definition body |
+
+`latest-versions` has the same contract as `/api/metadata/workflow/latest-versions`:
+it always returns a `SearchResult`, a page when `start`, `size` or a filter is
+given (size 100 when omitted). `GET /workflow` takes the same `classifier` filter
+as `/api/metadata/workflow` (`workflow` for untagged definitions, `agent` for
+agents).
 
 `conductor.tenant-metadata.enabled=false` turns the endpoint off, and the proxy's
 rewritten GETs then return 404. Do not set it on Scylla.

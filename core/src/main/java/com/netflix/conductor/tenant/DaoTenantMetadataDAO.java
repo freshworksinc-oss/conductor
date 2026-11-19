@@ -26,8 +26,10 @@ import com.netflix.conductor.common.metadata.Auditable;
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
+import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.core.exception.NotFoundException;
 import com.netflix.conductor.dao.MetadataDAO;
+import com.netflix.conductor.dao.OwnerScopedMetadataDAO;
 import com.netflix.conductor.dao.WorkflowDefIndexDAO;
 
 /**
@@ -36,8 +38,14 @@ import com.netflix.conductor.dao.WorkflowDefIndexDAO;
  * ownerApp} equals the tenant id exactly, the same rule as {@link PostgresTenantMetadataDAO}. Used
  * when {@code conductor.db.type} is not {@code postgres}.
  *
- * <p>Definitions are read through {@link MetadataDAO} on each call and filtered in memory, the same
- * cost as the unfiltered {@code /api/metadata} listing.
+ * <p>When the persistence implements {@link OwnerScopedMetadataDAO} (Scylla), the workflow listings
+ * come from its per-owner view: a lookup, and a page reads nothing beyond it. Otherwise definitions
+ * are read through {@link MetadataDAO} on each call and filtered in memory, the same cost as the
+ * unfiltered {@code /api/metadata} listing.
+ *
+ * <p>Ownership of a name follows its latest version. The all-versions listing returns the tenant's
+ * own versions of those names, so a tenant's old version of a name whose latest belongs to someone
+ * else is not listed (as {@link #getWorkflowVersionsByTenant} already did).
  */
 public class DaoTenantMetadataDAO implements TenantMetadataDAO {
 
@@ -46,12 +54,23 @@ public class DaoTenantMetadataDAO implements TenantMetadataDAO {
 
     private final MetadataDAO metadataDAO;
 
+    /** The persistence's per-owner listing when it has one (Scylla), else null. */
+    private final OwnerScopedMetadataDAO ownerScoped;
+
     public DaoTenantMetadataDAO(MetadataDAO metadataDAO) {
         this.metadataDAO = metadataDAO;
+        this.ownerScoped =
+                metadataDAO instanceof OwnerScopedMetadataDAO
+                        ? (OwnerScopedMetadataDAO) metadataDAO
+                        : null;
     }
 
     @Override
     public List<WorkflowDef> getWorkflowDefsByTenant(String tenantId) {
+        if (ownerScoped != null) {
+            // only the tenant's names are read, not every version of every tenant
+            return tenantId == null ? List.of() : ownerScoped.getWorkflowDefsByOwner(tenantId);
+        }
         return owned(tenantId, metadataDAO.getAllWorkflowDefs()).stream()
                 .sorted(BY_NAME_THEN_VERSION)
                 .collect(Collectors.toList());
@@ -59,9 +78,28 @@ public class DaoTenantMetadataDAO implements TenantMetadataDAO {
 
     @Override
     public List<WorkflowDef> getWorkflowDefsLatestVersionsByTenant(String tenantId) {
+        if (ownerScoped != null) {
+            return tenantId == null
+                    ? List.of()
+                    : ownerScoped.getWorkflowDefsLatestVersionsByOwner(tenantId);
+        }
         return owned(tenantId, metadataDAO.getAllWorkflowDefsLatestVersions()).stream()
                 .sorted(Comparator.comparing(WorkflowDef::getName))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public SearchResult<WorkflowDef> searchWorkflowDefsLatestVersionsByTenant(
+            String tenantId, int start, int size, String filterField, String filterValue) {
+        if (ownerScoped != null) {
+            if (tenantId == null) {
+                return new SearchResult<>(0, List.of());
+            }
+            return ownerScoped.searchWorkflowDefsLatestVersionsByOwner(
+                    tenantId, start, size, filterField, filterValue);
+        }
+        return TenantMetadataDAO.super.searchWorkflowDefsLatestVersionsByTenant(
+                tenantId, start, size, filterField, filterValue);
     }
 
     @Override
@@ -108,6 +146,9 @@ public class DaoTenantMetadataDAO implements TenantMetadataDAO {
 
     @Override
     public List<String> getWorkflowNamesByTenant(String tenantId) {
+        if (ownerScoped != null) {
+            return tenantId == null ? List.of() : ownerScoped.getWorkflowNamesByOwner(tenantId);
+        }
         return owned(tenantId, metadataDAO.getAllWorkflowDefsLatestVersions()).stream()
                 .map(WorkflowDef::getName)
                 .distinct()

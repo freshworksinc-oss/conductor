@@ -35,6 +35,7 @@ import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.dao.MetadataDAO;
+import com.netflix.conductor.dao.OwnerScopedMetadataDAO;
 import com.netflix.conductor.dao.PaginatedMetadataDAO;
 import com.netflix.conductor.dao.WorkflowDefIndexDAO;
 import com.netflix.conductor.metrics.Monitors;
@@ -47,7 +48,7 @@ import static com.netflix.conductor.scylla.config.cache.CachingConfig.TASK_DEF_C
 
 @Trace
 public class CacheableMetadataDAO
-        implements MetadataDAO, PaginatedMetadataDAO, WorkflowDefIndexDAO {
+        implements MetadataDAO, PaginatedMetadataDAO, WorkflowDefIndexDAO, OwnerScopedMetadataDAO {
 
     private static final String CLASS_NAME = CacheableMetadataDAO.class.getSimpleName();
 
@@ -182,6 +183,30 @@ public class CacheableMetadataDAO
             int start, int size, String filterField, String filterValue) {
         return scyllaMetadataDAO.searchWorkflowDefsLatestVersions(
                 start, size, filterField, filterValue);
+    }
+
+    // Tenant (ownerApp) listings: without these the tenant DAO would filter every definition.
+
+    @Override
+    public List<String> getWorkflowNamesByOwner(String ownerApp) {
+        return scyllaMetadataDAO.getWorkflowNamesByOwner(ownerApp);
+    }
+
+    @Override
+    public List<WorkflowDef> getWorkflowDefsLatestVersionsByOwner(String ownerApp) {
+        return scyllaMetadataDAO.getWorkflowDefsLatestVersionsByOwner(ownerApp);
+    }
+
+    @Override
+    public SearchResult<WorkflowDef> searchWorkflowDefsLatestVersionsByOwner(
+            String ownerApp, int start, int size, String filterField, String filterValue) {
+        return scyllaMetadataDAO.searchWorkflowDefsLatestVersionsByOwner(
+                ownerApp, start, size, filterField, filterValue);
+    }
+
+    @Override
+    public List<WorkflowDef> getWorkflowDefsByOwner(String ownerApp) {
+        return scyllaMetadataDAO.getWorkflowDefsByOwner(ownerApp);
     }
 
     private List<TaskDef> refreshTaskDefsCache() {

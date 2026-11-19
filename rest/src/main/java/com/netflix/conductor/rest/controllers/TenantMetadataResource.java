@@ -20,8 +20,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.netflix.conductor.common.metadata.tasks.TaskDef;
+import com.netflix.conductor.common.metadata.workflow.WorkflowClassifier;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
+import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.core.exception.NotFoundException;
 import com.netflix.conductor.tenant.TenantMetadataConditions;
 import com.netflix.conductor.tenant.TenantMetadataDAO;
@@ -32,6 +34,9 @@ import com.netflix.conductor.tenant.TenantMetadataDAO;
 // scanned components): on unless conductor.tenant-metadata.enabled=false.
 @ConditionalOnExpression(TenantMetadataConditions.SERVED)
 public class TenantMetadataResource {
+
+    /** Page size when a page is asked for without {@code size}, as /api/metadata. */
+    private static final int DEFAULT_PAGE_SIZE = 100;
 
     private final TenantMetadataDAO tenantMetadataDAO;
 
@@ -44,19 +49,52 @@ public class TenantMetadataResource {
     @GetMapping("/workflow")
     public List<WorkflowDef> getWorkflowDefs(
             @RequestHeader("X-Tenant-ID") String tenantId,
+            @RequestParam(value = "classifier", required = false) String classifier,
             @RequestParam(value = "short", required = false) Boolean shortList) {
         // short=true (the UI's definitions list): latest versions only, as
         // /workflow/latest-versions
-        if (Boolean.TRUE.equals(shortList)) {
-            return tenantMetadataDAO.getWorkflowDefsLatestVersionsByTenant(tenantId);
+        List<WorkflowDef> defs =
+                Boolean.TRUE.equals(shortList)
+                        ? tenantMetadataDAO.getWorkflowDefsLatestVersionsByTenant(tenantId)
+                        : tenantMetadataDAO.getWorkflowDefsByTenant(tenantId);
+        // Same classifier filter as /api/metadata/workflow (agent vs workflow views): "workflow"
+        // matches untagged defs, any other value the derived tag literally.
+        if (classifier == null || classifier.isBlank()) {
+            return defs;
         }
-        return tenantMetadataDAO.getWorkflowDefsByTenant(tenantId);
+        String wanted = classifier.trim();
+        return defs.stream()
+                .filter(wd -> wanted.equalsIgnoreCase(WorkflowClassifier.classifierOf(wd)))
+                .toList();
     }
 
+    /**
+     * Same contract as {@code GET /api/metadata/workflow/latest-versions} (the proxy rewrites that
+     * call here for tenants): with {@code start}, {@code size} or a filter, one page (size 100 when
+     * omitted); with none of them, every latest version. Always a {@link SearchResult}.
+     */
     @GetMapping("/workflow/latest-versions")
-    public List<WorkflowDef> getWorkflowDefsLatestVersions(
-            @RequestHeader("X-Tenant-ID") String tenantId) {
-        return tenantMetadataDAO.getWorkflowDefsLatestVersionsByTenant(tenantId);
+    public SearchResult<WorkflowDef> getWorkflowDefsLatestVersions(
+            @RequestHeader("X-Tenant-ID") String tenantId,
+            @RequestParam(value = "start", required = false) Integer start,
+            @RequestParam(value = "size", required = false) Integer size,
+            @RequestParam(value = "filterField", required = false) String filterField,
+            @RequestParam(value = "filterValue", required = false) String filterValue) {
+        if (start != null || size != null || filterField != null || filterValue != null) {
+            boolean filtered =
+                    filterField != null
+                            && filterValue != null
+                            && !filterField.isEmpty()
+                            && !filterValue.isEmpty();
+            return tenantMetadataDAO.searchWorkflowDefsLatestVersionsByTenant(
+                    tenantId,
+                    start != null ? start : 0,
+                    size != null ? size : DEFAULT_PAGE_SIZE,
+                    filtered ? filterField : null,
+                    filtered ? filterValue : null);
+        }
+        List<WorkflowDef> all = tenantMetadataDAO.getWorkflowDefsLatestVersionsByTenant(tenantId);
+        return new SearchResult<>(all.size(), all);
     }
 
     @GetMapping("/workflow/names")

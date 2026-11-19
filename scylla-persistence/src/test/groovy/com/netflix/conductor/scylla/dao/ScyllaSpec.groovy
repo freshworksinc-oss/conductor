@@ -54,7 +54,7 @@ abstract class ScyllaSpec extends Specification {
 
     def setup() {
         String keyspaceName = "junit"
-        cassandraProperties = Mock(CassandraProperties.class) {
+        cassandraProperties = Mock(ScyllaProperties.class) {
             getKeyspace() >> keyspaceName
             getReplicationStrategy() >> "SimpleStrategy"
             getReplicationFactorKey() >> "replication_factor"
@@ -64,6 +64,7 @@ abstract class ScyllaSpec extends Specification {
             getTaskDefCacheRefreshInterval() >> Duration.ofSeconds(60)
             getEventHandlerCacheRefreshInterval() >> Duration.ofSeconds(60)
             getEventExecutionPersistenceTtl() >> Duration.ofSeconds(5)
+            getWorkflowDefIndexCacheTtl() >> Duration.ofSeconds(30)
         }
 
         statements = new Statements(keyspaceName)

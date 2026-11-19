@@ -85,6 +85,74 @@ class ScyllaMetadataDAOSpec extends ScyllaSpec {
         defOptional.empty
     }
 
+    private static WorkflowDef ownedDef(String name, int version, String owner, String description) {
+        WorkflowDef wd = new WorkflowDef()
+        wd.setName(name)
+        wd.setVersion(version)
+        wd.setOwnerApp(owner)
+        wd.setDescription(description)
+        return wd
+    }
+
+    def "tenant (ownerApp) listings follow the latest version and page without reading other tenants"() {
+        given: 'definitions of two tenants; ownership of a name follows its latest version'
+        String a = "spec-tenant-a"
+        String b = "spec-tenant-b"
+        metadataDAO.createWorkflowDef(ownedDef("own_a_flow", 1, a, null))
+        metadataDAO.createWorkflowDef(ownedDef("own_a_flow", 2, a, null))
+        metadataDAO.createWorkflowDef(ownedDef("own_b_flow", 1, b, null)) // older version: b's
+        metadataDAO.createWorkflowDef(ownedDef("own_b_flow", 2, a, null)) // latest: a's
+        metadataDAO.createWorkflowDef(ownedDef("own_c_flow", 1, a, null)) // older version: a's
+        metadataDAO.createWorkflowDef(ownedDef("own_c_flow", 2, b, null)) // latest: b's
+        metadataDAO.createWorkflowDef(ownedDef("own_d_flow", 1, a, "Billing sync"))
+
+        expect: 'names whose latest version is the tenant own, sorted'
+        metadataDAO.getWorkflowNamesByOwner(a) == ["own_a_flow", "own_b_flow", "own_d_flow"]
+        metadataDAO.getWorkflowNamesByOwner(b) == ["own_c_flow"]
+        metadataDAO.getWorkflowNamesByOwner("nobody").isEmpty()
+        metadataDAO.getWorkflowNamesByOwner(null).isEmpty()
+
+        and: 'the latest version of each'
+        metadataDAO.getWorkflowDefsLatestVersionsByOwner(a).collect { "${it.name}/${it.version}" as String } ==
+                ["own_a_flow/2", "own_b_flow/2", "own_d_flow/1"]
+
+        and: 'pages, with the total of the whole tenant list'
+        def first = metadataDAO.searchWorkflowDefsLatestVersionsByOwner(a, 0, 2, null, null)
+        first.totalHits == 3
+        first.results*.name == ["own_a_flow", "own_b_flow"]
+        def second = metadataDAO.searchWorkflowDefsLatestVersionsByOwner(a, 2, 2, null, null)
+        second.totalHits == 3
+        second.results*.name == ["own_d_flow"]
+        metadataDAO.searchWorkflowDefsLatestVersionsByOwner(a, 10, 2, null, null).results.isEmpty()
+
+        and: 'a filter narrows the total too (case-insensitive substring)'
+        def billing = metadataDAO.searchWorkflowDefsLatestVersionsByOwner(a, 0, 10, "description", "BILLING")
+        billing.totalHits == 1
+        billing.results*.name == ["own_d_flow"]
+        def byName = metadataDAO.searchWorkflowDefsLatestVersionsByOwner(a, 0, 10, "name", "_b_")
+        byName.totalHits == 1
+        byName.results*.name == ["own_b_flow"]
+
+        and: 'all versions: only the tenant own versions of the tenant names'
+        metadataDAO.getWorkflowDefsByOwner(a).collect { "${it.name}/${it.version}" as String } ==
+                ["own_a_flow/1", "own_a_flow/2", "own_b_flow/2", "own_d_flow/1"]
+        metadataDAO.getWorkflowDefsByOwner(b).collect { "${it.name}/${it.version}" as String } ==
+                ["own_c_flow/2"]
+
+        when: 'a new definition is registered'
+        metadataDAO.createWorkflowDef(ownedDef("own_e_flow", 1, a, null))
+
+        then: 'it is listed at once (the per-owner view is rebuilt with the index)'
+        metadataDAO.getWorkflowNamesByOwner(a) == ["own_a_flow", "own_b_flow", "own_d_flow", "own_e_flow"]
+
+        when: 'the latest version of a name is removed, ownership falls back to the version before'
+        metadataDAO.removeWorkflowDef("own_c_flow", 2)
+
+        then:
+        metadataDAO.getWorkflowNamesByOwner(a).contains("own_c_flow")
+        metadataDAO.getWorkflowNamesByOwner(b).isEmpty()
+    }
+
     def "CRUD on TaskDef"() {
         given:
         String task1Name = "task1"

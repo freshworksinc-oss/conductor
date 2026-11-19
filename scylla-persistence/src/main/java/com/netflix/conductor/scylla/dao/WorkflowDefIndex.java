@@ -15,6 +15,7 @@ package com.netflix.conductor.scylla.dao;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.NavigableMap;
 import java.util.NavigableSet;
 import java.util.TreeMap;
@@ -41,11 +42,15 @@ final class WorkflowDefIndex {
         List<String> load();
     }
 
-    /** The index at one moment: immutable, apart from the lazily cached latest definitions. */
+    /**
+     * The index at one moment: immutable, apart from the lazily cached latest definitions (and the
+     * per-owner view built from them).
+     */
     static final class Snapshot {
         private final NavigableMap<String, NavigableSet<Integer>> versionsByName;
         private final int entries;
         private volatile List<WorkflowDef> latestDefs;
+        private volatile Map<String, List<WorkflowDef>> latestByOwner;
 
         Snapshot(NavigableMap<String, NavigableSet<Integer>> versionsByName, int entries) {
             this.versionsByName = versionsByName;
@@ -85,6 +90,19 @@ final class WorkflowDefIndex {
 
         void latestDefs(List<WorkflowDef> defs) {
             this.latestDefs = defs;
+        }
+
+        /**
+         * The latest definitions grouped by {@code ownerApp} (each list sorted by name), if already
+         * built for this snapshot (else null). Built from {@link #latestDefs()}, so it changes
+         * exactly when they do.
+         */
+        Map<String, List<WorkflowDef>> latestByOwner() {
+            return latestByOwner;
+        }
+
+        void latestByOwner(Map<String, List<WorkflowDef>> byOwner) {
+            this.latestByOwner = byOwner;
         }
     }
 

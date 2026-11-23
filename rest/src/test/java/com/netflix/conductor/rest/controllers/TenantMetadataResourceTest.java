@@ -177,7 +177,7 @@ public class TenantMetadataResourceTest {
 
         SearchResult<WorkflowDef> result =
                 tenantMetadataResource.getWorkflowDefsLatestVersions(
-                        TENANT_ID, null, null, null, null);
+                        TENANT_ID, null, null, null, null, null);
 
         assertEquals(2, result.getTotalHits());
         assertEquals(latest, result.getResults());
@@ -197,11 +197,12 @@ public class TenantMetadataResourceTest {
 
         assertEquals(
                 page,
-                tenantMetadataResource.getWorkflowDefsLatestVersions(TENANT_ID, 0, 15, null, null));
+                tenantMetadataResource.getWorkflowDefsLatestVersions(
+                        TENANT_ID, 0, 15, null, null, null));
         assertEquals( // size defaults to 100, as /api/metadata
                 page,
                 tenantMetadataResource.getWorkflowDefsLatestVersions(
-                        TENANT_ID, 30, null, null, null));
+                        TENANT_ID, 30, null, null, null, null));
     }
 
     @Test
@@ -217,11 +218,33 @@ public class TenantMetadataResourceTest {
         assertEquals(
                 page,
                 tenantMetadataResource.getWorkflowDefsLatestVersions(
-                        TENANT_ID, null, null, "description", "bill"));
+                        TENANT_ID, null, null, "description", "bill", null));
         assertEquals( // value without field: unfiltered page
                 0,
                 tenantMetadataResource
-                        .getWorkflowDefsLatestVersions(TENANT_ID, null, null, null, "bill")
+                        .getWorkflowDefsLatestVersions(TENANT_ID, null, null, null, "bill", null)
                         .getTotalHits());
+    }
+
+    @Test
+    public void latestVersionsClassifierFiltersThenPagesTheTenantsList() {
+        WorkflowDef a = def("a", null);
+        WorkflowDef agent = def("b_agent", Map.of("agent_sdk", "x"));
+        WorkflowDef c = def("c", null);
+        when(mockTenantMetadataDAO.getWorkflowDefsLatestVersionsByTenant(TENANT_ID))
+                .thenReturn(List.of(a, agent, c));
+
+        SearchResult<WorkflowDef> workflows =
+                tenantMetadataResource.getWorkflowDefsLatestVersions(
+                        TENANT_ID, 0, 1, null, null, "workflow");
+        SearchResult<WorkflowDef> agents = // no start/size: a page of 100
+                tenantMetadataResource.getWorkflowDefsLatestVersions(
+                        TENANT_ID, null, null, null, null, "agent");
+
+        assertEquals(2, workflows.getTotalHits()); // agents are not counted
+        assertEquals(List.of(a), workflows.getResults());
+        assertEquals(List.of(agent), agents.getResults());
+        verify(mockTenantMetadataDAO, never())
+                .searchWorkflowDefsLatestVersionsByTenant(any(), anyInt(), anyInt(), any(), any());
     }
 }

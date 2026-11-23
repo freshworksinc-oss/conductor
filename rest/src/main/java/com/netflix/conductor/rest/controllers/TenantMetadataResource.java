@@ -27,6 +27,7 @@ import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.core.exception.NotFoundException;
 import com.netflix.conductor.tenant.TenantMetadataConditions;
 import com.netflix.conductor.tenant.TenantMetadataDAO;
+import com.netflix.conductor.tenant.WorkflowDefPages;
 
 @RestController
 @RequestMapping("/api/tenant/metadata")
@@ -71,7 +72,8 @@ public class TenantMetadataResource {
     /**
      * Same contract as {@code GET /api/metadata/workflow/latest-versions} (the proxy rewrites that
      * call here for tenants): with {@code start}, {@code size} or a filter, one page (size 100 when
-     * omitted); with none of them, every latest version. Always a {@link SearchResult}.
+     * omitted); with none of them, every latest version. {@code classifier} filters agent vs
+     * workflow definitions as {@code GET /workflow}. Always a {@link SearchResult}.
      */
     @GetMapping("/workflow/latest-versions")
     public SearchResult<WorkflowDef> getWorkflowDefsLatestVersions(
@@ -79,13 +81,30 @@ public class TenantMetadataResource {
             @RequestParam(value = "start", required = false) Integer start,
             @RequestParam(value = "size", required = false) Integer size,
             @RequestParam(value = "filterField", required = false) String filterField,
-            @RequestParam(value = "filterValue", required = false) String filterValue) {
-        if (start != null || size != null || filterField != null || filterValue != null) {
+            @RequestParam(value = "filterValue", required = false) String filterValue,
+            @RequestParam(value = "classifier", required = false) String classifier) {
+        boolean byClassifier = classifier != null && !classifier.isBlank();
+        if (byClassifier
+                || start != null
+                || size != null
+                || filterField != null
+                || filterValue != null) {
             boolean filtered =
                     filterField != null
                             && filterValue != null
                             && !filterField.isEmpty()
                             && !filterValue.isEmpty();
+            if (byClassifier) {
+                // derived from each definition's metadata: filter the tenant's latest
+                // definitions (an in-memory slice on Scylla), then page
+                return WorkflowDefPages.filterAndPage(
+                        tenantMetadataDAO.getWorkflowDefsLatestVersionsByTenant(tenantId),
+                        start != null ? start : 0,
+                        size != null ? size : DEFAULT_PAGE_SIZE,
+                        filtered ? filterField : null,
+                        filtered ? filterValue : null,
+                        classifier);
+            }
             return tenantMetadataDAO.searchWorkflowDefsLatestVersionsByTenant(
                     tenantId,
                     start != null ? start : 0,

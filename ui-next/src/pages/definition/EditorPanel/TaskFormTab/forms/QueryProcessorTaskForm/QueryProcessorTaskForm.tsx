@@ -6,7 +6,7 @@ import { path as _path } from "lodash/fp";
 import { WorkflowExecutionStatus } from "types/Execution";
 import { QueryProcessorType } from "types/TaskType";
 import { updateField } from "utils/fieldHelpers";
-import { useWorkflowNames } from "utils/query";
+import { useWorkflowNames } from "utils/workflowDefLists";
 import { ConductorValueInput } from "../ConductorValueInput";
 import { useTaskForm } from "../hooks/useTaskForm";
 import TaskFormSection from "../TaskFormSection";

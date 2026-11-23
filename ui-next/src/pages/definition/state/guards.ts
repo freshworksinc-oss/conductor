@@ -28,7 +28,7 @@ import { TaskType } from "types";
 import fastDeepEqual from "fast-deep-equal";
 import { queryClient } from "queryClient";
 import { fetchContextNonHook } from "plugins/fetch";
-import { WORKFLOW_METADATA_BASE_URL_SHORT } from "utils/constants/api";
+import { WORKFLOW_NAMES_URL } from "utils/workflowDefLists";
 
 const fetchContext = fetchContextNonHook();
 
@@ -205,7 +205,7 @@ export const isSaveAndRunWithInputParams = (
 };
 
 export const isFirstTimeFlow = (context: DefinitionMachineContext) => {
-  const workflowDefinitionUrl = WORKFLOW_METADATA_BASE_URL_SHORT;
+  const workflowDefinitionUrl = WORKFLOW_NAMES_URL;
   const key = [fetchContext.stack, workflowDefinitionUrl];
   const data = queryClient.getQueryData<any>(key);
   // Check by local storage. and if there is any workflow in cache

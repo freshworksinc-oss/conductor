@@ -28,7 +28,8 @@ import { formatScheduleNameConflictMessage } from "utils/constants/common";
 import { SCHEDULER_DEFINITION_URL } from "utils/constants/route";
 import { usePushHistory } from "utils/hooks/usePushHistory";
 import { getErrors } from "utils/index";
-import { useAgentNames, useWorkflowDefsByVersions } from "utils/query";
+import { useAgentNames } from "utils/query";
+import { useWorkflowDefsByVersionsOnDemand } from "utils/workflowDefLists";
 import { CronExpressionSection } from "./components/CronExpressionSection";
 import { ScheduleTimingSection } from "./components/ScheduleTimingSection";
 import { WorkflowConfigSection } from "./components/WorkflowConfigSection";
@@ -93,7 +94,8 @@ export function Schedule() {
     isNewScheduleDef ? null : scheduleNameFromUrl,
   );
 
-  const workflowDefByVersions = useWorkflowDefsByVersions();
+  const [workflowDefByVersions, loadWorkflowDefVersion] =
+    useWorkflowDefsByVersionsOnDemand();
   const agentNames = useAgentNames();
 
   // Custom hooks for state management
@@ -197,11 +199,17 @@ export function Schedule() {
 
   // Memoized handlers using custom hooks
   const handleWorkflowTypeChange = useCallback(
-    (workflowType: string) => {
+    async (workflowType: string) => {
       setCouldNotParseJson(false);
       if (errors && errors["startWorkflowRequest.name"]) {
         clearError("startWorkflowRequest.name");
       }
+      // load the definition setWorkflowType reads: the latest version's
+      const versions = workflowDefByVersions.get("lookups").get(workflowType);
+      await loadWorkflowDefVersion(
+        workflowType,
+        versions?.[versions.length - 1],
+      );
       const result = setWorkflowType(workflowType);
       setScheduleState((prevState) => ({
         ...prevState,
@@ -212,11 +220,26 @@ export function Schedule() {
         workflowInputTemplate: result.workflowInputTemplate,
       }));
     },
-    [setWorkflowType, setScheduleState, errors, clearError],
+    [
+      setWorkflowType,
+      setScheduleState,
+      errors,
+      clearError,
+      workflowDefByVersions,
+      loadWorkflowDefVersion,
+    ],
   );
 
   const handleWorkflowVersionChange = useCallback(
-    (workflowVersion: string | null) => {
+    async (workflowVersion: string | null) => {
+      // load the definition setWorkflowVersion reads
+      const versions = scheduleState.workflowVersions ?? [];
+      await loadWorkflowDefVersion(
+        scheduleState.workflowType || null,
+        workflowVersion === "Latest version"
+          ? versions[versions.length - 1]
+          : workflowVersion,
+      );
       const result = setWorkflowVersion(
         workflowVersion,
         scheduleState.workflowType || null,
@@ -228,7 +251,13 @@ export function Schedule() {
         workflowInputTemplate: result.workflowInputTemplate,
       }));
     },
-    [setWorkflowVersion, setScheduleState, scheduleState.workflowType],
+    [
+      setWorkflowVersion,
+      setScheduleState,
+      scheduleState.workflowType,
+      scheduleState.workflowVersions,
+      loadWorkflowDefVersion,
+    ],
   );
 
   // Initialize state when schedule data changes

@@ -12,9 +12,7 @@
  */
 package com.netflix.conductor.tenant;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -52,38 +50,13 @@ public interface TenantMetadataDAO {
      */
     default SearchResult<WorkflowDef> searchWorkflowDefsLatestVersionsByTenant(
             String tenantId, int start, int size, String filterField, String filterValue) {
-        List<WorkflowDef> matches = getWorkflowDefsLatestVersionsByTenant(tenantId);
-        if (matches == null) {
-            matches = List.of();
-        }
-        if (filterValue != null && !filterValue.isEmpty()) {
-            String wanted = filterValue.toLowerCase(Locale.ROOT);
-            matches =
-                    matches.stream()
-                            .filter(
-                                    def -> {
-                                        String value = fieldOf(def, filterField);
-                                        return value != null
-                                                && value.toLowerCase(Locale.ROOT).contains(wanted);
-                                    })
-                            .toList();
-        }
-        int from = Math.min(Math.max(start, 0), matches.size());
-        int to = Math.min(from + Math.max(size, 0), matches.size());
-        return new SearchResult<>(matches.size(), new ArrayList<>(matches.subList(from, to)));
-    }
-
-    private static String fieldOf(WorkflowDef def, String field) {
-        switch (field == null ? "" : field) {
-            case "description":
-                return def.getDescription();
-            case "ownerEmail":
-                return def.getOwnerEmail();
-            case "ownerApp":
-                return def.getOwnerApp();
-            default:
-                return def.getName();
-        }
+        return WorkflowDefPages.filterAndPage(
+                getWorkflowDefsLatestVersionsByTenant(tenantId),
+                start,
+                size,
+                filterField,
+                filterValue,
+                null);
     }
 
     /** The tenant's workflow names with a summary of each version. */

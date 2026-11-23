@@ -8,7 +8,7 @@ import XCloseIcon from "components/icons/XCloseIcon";
 import _isEmpty from "lodash/isEmpty";
 import _isUndefined from "lodash/isUndefined";
 import { FocusEvent, useMemo } from "react";
-import { useWorkflowNamesAndVersions } from "utils/query";
+import { useWorkflowNamesAndVersions } from "utils/workflowDefLists";
 import { Props } from "./common";
 import IdempotencyForm from "pages/runWorkflow/IdempotencyForm";
 import { IdempotencyStrategyEnum } from "pages/runWorkflow/types";

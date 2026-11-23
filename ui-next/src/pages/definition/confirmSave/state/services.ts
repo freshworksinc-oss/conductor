@@ -2,6 +2,7 @@ import { removeCopyFromStorage } from "pages/definition/ConfirmLocalCopyDialog/s
 import { fetchWithContext } from "plugins/fetch";
 import { WorkflowDef } from "types/WorkflowDef";
 import { resolveAgentSnapshotsInWorkflow } from "utils/agentMetadata";
+import { workflowVersionsUrl } from "utils/workflowDefLists";
 import { SaveWorkflowMachineContext } from "./types";
 
 export { removeCopyFromStorage };
@@ -92,7 +93,7 @@ export const refetchAllDefinitionsOfCurrentWorkflow = async ({
   authHeaders: headers,
   workflowName,
 }: SaveWorkflowMachineContext) => {
-  const url = `/metadata/workflow?name=${encodeURIComponent(workflowName)}`;
+  const url = workflowVersionsUrl(workflowName);
   try {
     const result: WorkflowDef[] = await fetchWithContext(
       url,

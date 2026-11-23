@@ -24,7 +24,6 @@ import ImportBpmnButton from "pages/executions/SplitWorkflowDefinitionButton/Imp
 import { removeDeletedWorkflow } from "pages/runWorkflow/runWorkflowUtils";
 import { useCallback, useContext, useMemo, useState } from "react";
 import { Helmet } from "react-helmet";
-import { UseQueryResult } from "react-query";
 import { useNavigate } from "react-router";
 import SectionContainer from "components/ui/layout/SectionContainer";
 import SectionHeader from "components/layout/SectionHeader";
@@ -42,10 +41,11 @@ import { featureFlags, FEATURES } from "utils/flags";
 import useCustomPagination from "utils/hooks/useCustomPagination";
 import { usePushHistory } from "utils/hooks/usePushHistory";
 import { logger } from "utils/logger";
-import { useActionWithPath, useWorkflowDefs } from "utils/query";
+import { useActionWithPath } from "utils/query";
 import { createSearchableTags, tryToJson } from "utils/utils";
 import { getUniqueWorkflows } from "utils/workflow";
-import CloneWorkflowDialog from "./dialog/CloneWorkflowDialog";
+import CloneWorkflowDialog from "./dialog/CloneWorkflowDialogLoader";
+import { useWorkflowDefinitionsPage } from "./useWorkflowDefinitionsPage";
 
 const INTRO_CONTENT = `A **workflow definition** is a blueprint that defines the sequence of tasks, their dependencies, and how data flows between them.
 
@@ -67,8 +67,8 @@ export default function WorkflowDefinitions() {
   const isPlayground = featureFlags.isEnabled(FEATURES.PLAYGROUND);
   const tagsEnabled = featureFlags.isEnabled(FEATURES.TAG_VISIBILITY);
   const isImportBpmnHidden = featureFlags.isEnabled(FEATURES.HIDE_IMPORT_BPMN);
-  const { data, isFetching, refetch }: UseQueryResult<WorkflowDef[]> =
-    useWorkflowDefs({}, "workflow");
+  const { data, isFetching, refetch, tableProps } =
+    useWorkflowDefinitionsPage("workflow");
   const [showAddTagDialog, setShowAddTagDialog] = useState(false);
   const [addTagDialogData, setAddTagDialogData] =
     useState<TagDialogProps | null>(null);
@@ -554,6 +554,7 @@ export default function WorkflowDefinitions() {
               ]}
               onChangePage={handlePageChange}
               paginationDefaultPage={pageParam ? Number(pageParam) : 1}
+              {...tableProps}
               noDataComponent={
                 searchParam === "" ? (
                   <NoDataComponent

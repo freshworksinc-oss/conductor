@@ -24,7 +24,8 @@ import SectionHeader from "components/layout/SectionHeader";
 import { useAuth } from "components/features/auth";
 import { colors } from "theme/tokens/variables";
 import { logger, tryToJson, useLocalStorage } from "utils/index";
-import { useAction, useWorkflowDefsByVersions } from "utils/query";
+import { useAction } from "utils/query";
+import { useWorkflowDefsByVersionsOnDemand } from "utils/workflowDefLists";
 import { v4 as uuidv4 } from "uuid";
 import IdempotencyForm from "./IdempotencyForm";
 import {
@@ -190,7 +191,8 @@ export function RunWorkflow() {
 
   const { isTrialExpired } = useAuth();
 
-  const workflowDefByVersions = useWorkflowDefsByVersions();
+  const [workflowDefByVersions, loadWorkflowDefVersion] =
+    useWorkflowDefsByVersionsOnDemand();
   const workflowNames = useMemo(
     (): string[] =>
       workflowDefByVersions
@@ -290,7 +292,7 @@ export function RunWorkflow() {
     return JSON.stringify({}, null, 2);
   };
 
-  const setWorkflowTypeState = function (workflowType: string) {
+  const setWorkflowTypeState = async function (workflowType: string) {
     let workflowVersionsVal = [];
 
     if (workflowType !== null) {
@@ -311,6 +313,7 @@ export function RunWorkflow() {
         inputParameters: [],
       };
       if (latestVersion !== null) {
+        await loadWorkflowDefVersion(workflowType, latestVersion);
         def = workflowDefByVersions
           .get("values")
           .get(workflowType)
@@ -341,11 +344,15 @@ export function RunWorkflow() {
     setWorkflowInputTemplatesState(versionObj.workflowInputTemplate);
   };
 
-  const setWorkflowVersionState = function (workflowVersion: string) {
+  const setWorkflowVersionState = async function (workflowVersion: string) {
     let def: InputParameterType = {
       inputParameters: [],
     };
     if (workflowVersion !== null) {
+      await loadWorkflowDefVersion(
+        runWorkflowState.workflowType,
+        workflowVersion,
+      );
       def = workflowDefByVersions
         .get("values")
         .get(runWorkflowState.workflowType)

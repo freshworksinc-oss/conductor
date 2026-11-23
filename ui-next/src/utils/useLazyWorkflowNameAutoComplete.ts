@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useWorkflowNames } from "./query";
+import { useWorkflowNames } from "./workflowDefLists";
 
 export const useLazyWorkflowNameAutoComplete = (
   nameFilter = (_x: string) => true,

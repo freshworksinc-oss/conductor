@@ -16,6 +16,7 @@ import { WORKFLOW_NAME_ERROR_MESSAGE } from "utils/constants/common";
 import { WORKFLOW_NAME_REGEX } from "utils/constants/regex";
 import { useActionWithPath, useFetch } from "utils/query";
 import { getSequentiallySuffix } from "utils/strings";
+import { workflowVersionsUrl } from "utils/workflowDefLists";
 import * as yup from "yup";
 import { AgentSummary } from "./types";
 
@@ -41,7 +42,7 @@ export default function CloneAgentDialog({
   onSuccess,
 }: CloneAgentDialogProps) {
   const { data: agentDefinitions = [] } = useFetch<AgentSummary[]>(
-    "/metadata/workflow?short=true&metadata=true&classifier=agent",
+    workflowVersionsUrl(selectedAgent.name),
   );
   const agentNames = useMemo(
     () => Array.from(new Set(agentList.map((agent) => agent.name))),

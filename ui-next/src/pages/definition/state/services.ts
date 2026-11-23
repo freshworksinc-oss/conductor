@@ -15,6 +15,7 @@ import {
 import { FEATURES, featureFlags } from "utils/flags";
 import { logger } from "utils/logger";
 import { getErrors } from "utils/utils";
+import { workflowVersionsUrl } from "utils/workflowDefLists";
 import { getEnvVariables } from "../commonService";
 
 export { fetchCloudTemplatesPreferCached };
@@ -141,9 +142,7 @@ export const refetchCurrentWorkflowVersionsService = async ({
     return {};
   }
 
-  const url = `/metadata/workflow?includeShared=false&name=${encodeURIComponent(
-    workflowName,
-  )}`;
+  const url = workflowVersionsUrl(workflowName);
 
   try {
     const result: WorkflowDef[] = await queryClient.fetchQuery(

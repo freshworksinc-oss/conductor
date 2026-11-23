@@ -22,7 +22,8 @@ import SectionHeader from "components/layout/SectionHeader";
 import { Key } from "ts-key-enum";
 import { ERROR_URL } from "utils/constants/route";
 import { useScheduleNames } from "utils/hooks/useGetSchedulerDefinitions";
-import { useSchedulerSearch, useWorkflowNames } from "utils/query";
+import { useSchedulerSearch } from "utils/query";
+import { useWorkflowNames } from "utils/workflowDefLists";
 import { SchedulerApiSearchModal } from "./SchedulerApiSearchModal";
 import SchedulerResultsTable from "./SchedulerResultsTable";
 

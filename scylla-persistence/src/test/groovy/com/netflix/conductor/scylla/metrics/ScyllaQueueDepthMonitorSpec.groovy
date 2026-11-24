@@ -13,11 +13,11 @@
 package com.netflix.conductor.scylla.metrics
 
 import com.netflix.conductor.common.metadata.tasks.PollData
-import com.netflix.conductor.common.metadata.tasks.TaskDef
 import com.netflix.conductor.core.execution.tasks.WorkflowSystemTask
 import com.netflix.conductor.dao.MetadataDAO
 import com.netflix.conductor.dao.PollDataDAO
 import com.netflix.conductor.dao.QueueDAO
+import com.netflix.conductor.dao.TaskMetricInfo
 import com.netflix.conductor.metrics.Monitors
 
 import spock.lang.Specification
@@ -40,9 +40,7 @@ class ScyllaQueueDepthMonitorSpec extends Specification {
 
     def "publishes the no-domain queue and every tenant domain queue"() {
         given:
-        def taskDef = new TaskDef("qd_email_task")
-        taskDef.ownerApp = "freshservice"
-        metadataDAO.getAllTaskDefs() >> [taskDef]
+        metadataDAO.getTaskMetricInfo() >> [new TaskMetricInfo("qd_email_task", "freshservice", 0)]
         pollDataDAO.getAllPollData() >> [
                 pollData("qd_email_task", "freshservice"),
                 pollData("qd_email_task", null),
@@ -69,7 +67,7 @@ class ScyllaQueueDepthMonitorSpec extends Specification {
     def "async system tasks are reported with ownerApp=system"() {
         given:
         def systemTask = new WorkflowSystemTask("QD_SYS_TASK") {}
-        metadataDAO.getAllTaskDefs() >> []
+        metadataDAO.getTaskMetricInfo() >> []
         pollDataDAO.getAllPollData() >> []
         queueDAO.queuesDetail() >> ["sip:QD_SYS_TASK": 5L]
         queueDAO.getSize("QD_SYS_TASK") >> 1
@@ -88,8 +86,7 @@ class ScyllaQueueDepthMonitorSpec extends Specification {
 
     def "a failing poll data source still reports queues known to this server"() {
         given:
-        def taskDef = new TaskDef("qd_fallback_task")
-        metadataDAO.getAllTaskDefs() >> [taskDef]
+        metadataDAO.getTaskMetricInfo() >> [new TaskMetricInfo("qd_fallback_task", null, 0)]
         pollDataDAO.getAllPollData() >> { throw new RuntimeException("scylla down") }
         queueDAO.queuesDetail() >> ["sip:qd_fallback_task": 2L]
         queueDAO.getSize("sip:qd_fallback_task") >> 2

@@ -20,6 +20,7 @@ import org.testcontainers.spock.Testcontainers
 
 import com.netflix.conductor.common.config.ObjectMapperProvider
 import com.netflix.conductor.common.metadata.workflow.WorkflowDef
+import com.netflix.conductor.common.metadata.workflow.WorkflowTask
 import com.netflix.conductor.model.TaskModel
 import com.netflix.conductor.model.WorkflowModel
 import com.netflix.conductor.scylla.config.ScyllaProperties
@@ -208,5 +209,34 @@ class ScyllaExecutionStatsSpec extends Specification {
         then:
         dao.getInProgressTaskCount("stats_removed_task") == 0
         dao.getPendingWorkflowCount("stats_removed_wf") == 0
+    }
+
+    def "workflow metric info has the latest owner of each name, read from Scylla"() {
+        given: "two versions of one workflow with different owners"
+        def metadataDAO = new ScyllaMetadataDAO(session, new ObjectMapperProvider().objectMapper,
+                properties, new Statements(KEYSPACE))
+        def v1 = new WorkflowDef(name: "stats_metric_wf", version: 1, ownerApp: "owner_v1",
+                tasks: [new WorkflowTask(name: "t", taskReferenceName: "t_ref")])
+        def v2 = new WorkflowDef(name: "stats_metric_wf", version: 2, ownerApp: "owner_v2",
+                tasks: [new WorkflowTask(name: "t", taskReferenceName: "t_ref")])
+        metadataDAO.createWorkflowDef(v1)
+        metadataDAO.createWorkflowDef(v2)
+
+        when:
+        def byName = metadataDAO.getWorkflowMetricInfo().collectEntries { [(it.name()): it] }
+
+        then: "one entry for the name, with the owner of the latest version"
+        byName["stats_metric_wf"].ownerApp() == "owner_v2"
+        metadataDAO.getWorkflowMetricInfo().count { it.name() == "stats_metric_wf" } == 1
+
+        when: "the latest definitions were already read and cached with the index"
+        metadataDAO.getAllWorkflowDefsLatestVersions()
+
+        then: "the cached definitions give the same answer"
+        metadataDAO.getWorkflowMetricInfo().find { it.name() == "stats_metric_wf" }.ownerApp() == "owner_v2"
+
+        cleanup:
+        metadataDAO?.removeWorkflowDef("stats_metric_wf", 2)
+        metadataDAO?.removeWorkflowDef("stats_metric_wf", 1)
     }
 }

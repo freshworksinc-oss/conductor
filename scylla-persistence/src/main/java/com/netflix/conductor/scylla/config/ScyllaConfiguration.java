@@ -141,12 +141,12 @@ public class ScyllaConfiguration {
     }
 
     /**
-     * task_queue_depth_by_domain; runs wherever WorkflowMonitor runs, unless
-     * conductor.scylla.queue-metrics-enabled=false.
+     * task_queue_depth_by_domain. Switched only by conductor.scylla.queue-metrics-enabled (default
+     * true), independently of conductor.workflow-monitor.enabled.
      */
     @Bean
     @ConditionalOnProperty(
-            name = {"conductor.workflow-monitor.enabled", "conductor.scylla.queue-metrics-enabled"},
+            name = "conductor.scylla.queue-metrics-enabled",
             havingValue = "true",
             matchIfMissing = true)
     public ScyllaQueueDepthMonitor scyllaQueueDepthMonitor(

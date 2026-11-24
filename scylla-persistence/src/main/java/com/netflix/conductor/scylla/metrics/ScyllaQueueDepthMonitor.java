@@ -23,12 +23,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 
 import com.netflix.conductor.common.metadata.tasks.PollData;
-import com.netflix.conductor.common.metadata.tasks.TaskDef;
 import com.netflix.conductor.core.execution.tasks.WorkflowSystemTask;
 import com.netflix.conductor.core.utils.QueueUtils;
 import com.netflix.conductor.dao.MetadataDAO;
 import com.netflix.conductor.dao.PollDataDAO;
 import com.netflix.conductor.dao.QueueDAO;
+import com.netflix.conductor.dao.TaskMetricInfo;
 import com.netflix.conductor.metrics.Monitors;
 
 /**
@@ -72,8 +72,8 @@ public class ScyllaQueueDepthMonitor {
     public void reportQueueDepth() {
         Map<String, Set<String>> domainsByTask = getQueueDomainsByTaskType();
         try {
-            for (TaskDef taskDef : metadataDAO.getAllTaskDefs()) {
-                report(taskDef.getName(), taskDef.getOwnerApp(), domainsByTask);
+            for (TaskMetricInfo task : metadataDAO.getTaskMetricInfo()) {
+                report(task.name(), task.ownerApp(), domainsByTask);
             }
         } catch (Exception e) {
             LOGGER.error("Error while publishing {} for task definitions", METRIC, e);

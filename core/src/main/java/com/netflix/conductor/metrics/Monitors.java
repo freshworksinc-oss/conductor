@@ -31,10 +31,15 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.ImmutableTag;
+import io.micrometer.core.instrument.Meter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tag;
+import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
 import io.micrometer.core.instrument.composite.CompositeMeterRegistry;
+import io.micrometer.core.instrument.noop.NoopCounter;
+import io.micrometer.core.instrument.noop.NoopDistributionSummary;
+import io.micrometer.core.instrument.noop.NoopTimer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import lombok.extern.slf4j.Slf4j;
 
@@ -71,15 +76,64 @@ public class Monitors {
             new ConcurrentHashMap<>();
     private static final Set<String> registeredWebhookQueueGauges = ConcurrentHashMap.newKeySet();
 
+    /**
+     * Event metrics are the counters, timers and distribution summaries recorded as work happens
+     * (task polls, executions, queue waits, errors, Redis call timings). Gauges are not affected.
+     * Switched by conductor.metrics.event-metrics.enabled (EventMetricsConfiguration).
+     */
+    private static volatile boolean eventMetricsEnabled = true;
+
+    // Shared no-op meters: nothing is registered, nothing is exported, no heap per tag combination.
+    // NoopTimer still runs the code passed to record(Supplier/Runnable) and recordCallable.
+    private static final Counter NOOP_COUNTER =
+            new NoopCounter(noopId("noop_counter", Meter.Type.COUNTER));
+    private static final Timer NOOP_TIMER = new NoopTimer(noopId("noop_timer", Meter.Type.TIMER));
+    private static final DistributionSummary NOOP_DISTRIBUTION_SUMMARY =
+            new NoopDistributionSummary(
+                    noopId("noop_distribution_summary", Meter.Type.DISTRIBUTION_SUMMARY));
+
     private Monitors() {}
 
+    private static Meter.Id noopId(String name, Meter.Type type) {
+        return new Meter.Id(name, Tags.empty(), null, null, type);
+    }
+
+    /**
+     * Turns event metrics on or off. Turning them off also removes the event meters registered so
+     * far, so they stop being exported; callers holding one keep a meter that is no longer
+     * exported.
+     */
+    public static void setEventMetricsEnabled(boolean enabled) {
+        eventMetricsEnabled = enabled;
+        if (!enabled) {
+            removeAll(counters);
+            removeAll(timers);
+            removeAll(distributionSummaries);
+        }
+    }
+
+    public static boolean isEventMetricsEnabled() {
+        return eventMetricsEnabled;
+    }
+
+    private static void removeAll(Map<String, ? extends Meter> meters) {
+        meters.values().forEach(registry::remove);
+        meters.clear();
+    }
+
     public static Counter getCounter(String name, String... tags) {
+        if (!eventMetricsEnabled) {
+            return NOOP_COUNTER;
+        }
         String key = name + Arrays.toString(tags);
         return counters.computeIfAbsent(
                 key, s -> Counter.builder(name).tags(toTags(tags)).register(registry));
     }
 
     public static Timer getTimer(String name, String... tags) {
+        if (!eventMetricsEnabled) {
+            return NOOP_TIMER;
+        }
         String key = name + Arrays.toString(tags);
         return timers.computeIfAbsent(
                 key,
@@ -91,6 +145,9 @@ public class Monitors {
     }
 
     public static DistributionSummary distributionSummary(String name, String... tags) {
+        if (!eventMetricsEnabled) {
+            return NOOP_DISTRIBUTION_SUMMARY;
+        }
         String key = name + Arrays.toString(tags);
         return distributionSummaries.computeIfAbsent(
                 key,

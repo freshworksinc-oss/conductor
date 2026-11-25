@@ -16,16 +16,26 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.After;
 import org.junit.Test;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.noop.NoopCounter;
+import io.micrometer.core.instrument.noop.NoopDistributionSummary;
+import io.micrometer.core.instrument.noop.NoopTimer;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import static org.junit.Assert.*;
 
 public class MonitorsTest {
+
+    @After
+    public void restoreEventMetrics() {
+        Monitors.setEventMetricsEnabled(true);
+    }
 
     @Test
     public void getRegistry_returnsNonNull() {
@@ -194,5 +204,78 @@ public class MonitorsTest {
                         .counter();
         assertNotNull(counter);
         assertEquals(1.0, counter.count(), 0.001);
+    }
+
+    @Test
+    public void eventMetricsDisabled_countersTimersSummariesAreNoopAndNotExported() {
+        SimpleMeterRegistry probe = new SimpleMeterRegistry();
+        Monitors.addMeterRegistry(probe);
+        Monitors.setEventMetricsEnabled(false);
+
+        Counter counter = Monitors.getCounter("test_event_off_counter", "k", "v");
+        Timer timer = Monitors.getTimer("test_event_off_timer", "k", "v");
+        DistributionSummary summary =
+                Monitors.distributionSummary("test_event_off_summary", "k", "v");
+        counter.increment();
+        timer.record(5, TimeUnit.MILLISECONDS);
+        summary.record(3);
+
+        assertTrue(counter instanceof NoopCounter);
+        assertTrue(timer instanceof NoopTimer);
+        assertTrue(summary instanceof NoopDistributionSummary);
+        assertNull(probe.find("test_event_off_counter").counter());
+        assertNull(probe.find("test_event_off_timer").timer());
+        assertNull(probe.find("test_event_off_summary").summary());
+    }
+
+    @Test
+    public void eventMetricsDisabled_timerStillRunsTheWrappedCode() throws Exception {
+        Monitors.setEventMetricsEnabled(false);
+
+        // JedisProxy wraps Redis calls in getTimer(...).record(...): the call must still happen.
+        assertEquals("result", Monitors.getTimer("test_event_off_wrap").record(() -> "result"));
+        assertEquals(
+                Integer.valueOf(7),
+                Monitors.getTimer("test_event_off_wrap").recordCallable(() -> 7));
+        int[] ran = {0};
+        Monitors.getTimer("test_event_off_wrap").record(() -> ran[0]++);
+        assertEquals(1, ran[0]);
+    }
+
+    @Test
+    public void eventMetricsDisabled_removesEventMetersAlreadyRegistered() {
+        SimpleMeterRegistry probe = new SimpleMeterRegistry();
+        Monitors.addMeterRegistry(probe);
+        Monitors.getCounter("test_event_registered_before", "k", "v").increment();
+        assertNotNull(probe.find("test_event_registered_before").counter());
+
+        Monitors.setEventMetricsEnabled(false);
+
+        assertNull(probe.find("test_event_registered_before").counter());
+    }
+
+    @Test
+    public void eventMetricsDisabled_gaugesStillWork() {
+        SimpleMeterRegistry probe = new SimpleMeterRegistry();
+        Monitors.addMeterRegistry(probe);
+        Monitors.setEventMetricsEnabled(false);
+
+        Monitors.getGauge("test_event_off_gauge", "k", "v").set(42);
+
+        assertNotNull(probe.find("test_event_off_gauge").gauge());
+        assertEquals(42.0, probe.find("test_event_off_gauge").gauge().value(), 0.001);
+    }
+
+    @Test
+    public void eventMetricsReEnabled_realMetersAgain() {
+        SimpleMeterRegistry probe = new SimpleMeterRegistry();
+        Monitors.addMeterRegistry(probe);
+        Monitors.setEventMetricsEnabled(false);
+        Monitors.setEventMetricsEnabled(true);
+
+        Monitors.getCounter("test_event_reenabled", "k", "v").increment(2);
+
+        assertFalse(Monitors.getCounter("test_event_reenabled", "k", "v") instanceof NoopCounter);
+        assertEquals(2.0, probe.find("test_event_reenabled").counter().count(), 0.001);
     }
 }

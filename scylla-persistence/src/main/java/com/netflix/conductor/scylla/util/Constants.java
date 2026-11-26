@@ -29,6 +29,7 @@ public interface Constants {
     String TABLE_TASK_IN_PROGRESS = "task_in_progress";
     String TABLE_TASK_IN_PROGRESS_V2 = "task_in_progress_v2";
     String TABLE_POLL_DATA = "poll_data";
+    String TABLE_WORKFLOW_PENDING = "workflow_pending";
 
     String WORKFLOW_ID_KEY = "workflow_id";
     String SHARD_ID_KEY = "shard_id";
@@ -47,6 +48,7 @@ public interface Constants {
     String JSON_DATA_KEY = "json_data";
     String DEFAULT_POLL_DOMAIN = "DEFAULT";
     String TASK_DEF_NAME_KEY = "task_def_name";
+    String WORKFLOW_TYPE_KEY = "workflow_type";
     String WORKFLOW_DEF_NAME_KEY = "workflow_def_name";
     String WORKFLOW_VERSION_KEY = "version";
     String WORKFLOW_DEFINITION_KEY = "workflow_definition";

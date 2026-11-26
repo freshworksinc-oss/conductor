@@ -797,4 +797,37 @@ public class Statements {
                 .value(TASK_IN_PROG_STATUS_KEY, bindMarker())
                 .getQueryString();
     }
+
+    /** Marks a workflow as pending (non-terminal) in "workflow_pending". Idempotent upsert. */
+    public String getInsertPendingWorkflowStatement() {
+        return QueryBuilder.insertInto(keyspace, TABLE_WORKFLOW_PENDING)
+                .value(WORKFLOW_TYPE_KEY, bindMarker())
+                .value(WORKFLOW_ID_KEY, bindMarker())
+                .getQueryString();
+    }
+
+    public String getDeletePendingWorkflowStatement() {
+        return QueryBuilder.delete()
+                .from(keyspace, TABLE_WORKFLOW_PENDING)
+                .where(eq(WORKFLOW_TYPE_KEY, bindMarker()))
+                .and(eq(WORKFLOW_ID_KEY, bindMarker()))
+                .getQueryString();
+    }
+
+    public String getSelectCountPendingWorkflowsStatement() {
+        return QueryBuilder.select()
+                .countAll()
+                .from(keyspace, TABLE_WORKFLOW_PENDING)
+                .where(eq(WORKFLOW_TYPE_KEY, bindMarker()))
+                .getQueryString();
+    }
+
+    /** In-progress tasks of a task def: one "task_def_limit" row per IN_PROGRESS task. */
+    public String getSelectCountTaskDefLimitStatement() {
+        return QueryBuilder.select()
+                .countAll()
+                .from(keyspace, TABLE_TASK_DEF_LIMIT)
+                .where(eq(TASK_DEF_NAME_KEY, bindMarker()))
+                .getQueryString();
+    }
 }

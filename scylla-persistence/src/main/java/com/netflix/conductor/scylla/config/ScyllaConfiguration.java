@@ -12,19 +12,26 @@
  */
 package com.netflix.conductor.scylla.config;
 
+import java.util.Set;
+
 import org.conductoross.conductor.dao.schema.InMemorySchemaDAO;
 import org.conductoross.conductor.dao.schema.SchemaDAO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.netflix.conductor.core.execution.tasks.SystemTaskRegistry;
+import com.netflix.conductor.core.execution.tasks.WorkflowSystemTask;
 import com.netflix.conductor.dao.EventHandlerDAO;
 import com.netflix.conductor.dao.ExecutionDAO;
 import com.netflix.conductor.dao.MetadataDAO;
+import com.netflix.conductor.dao.QueueDAO;
 import com.netflix.conductor.dao.RateLimitingDAO;
 import com.netflix.conductor.scylla.config.cache.CacheableEventHandlerDAO;
 import com.netflix.conductor.scylla.config.cache.CacheableMetadataDAO;
@@ -33,6 +40,8 @@ import com.netflix.conductor.scylla.dao.ScyllaExecutionDAO;
 import com.netflix.conductor.scylla.dao.ScyllaMetadataDAO;
 import com.netflix.conductor.scylla.dao.ScyllaPollDataDAO;
 import com.netflix.conductor.scylla.dao.ScyllaRateLimitingDAO;
+import com.netflix.conductor.scylla.metrics.ScyllaQueueDepthMonitor;
+import com.netflix.conductor.scylla.metrics.ScyllaWorkflowMonitor;
 import com.netflix.conductor.scylla.util.Statements;
 
 import com.datastax.driver.core.Cluster;
@@ -131,6 +140,51 @@ public class ScyllaConfiguration {
             ScyllaProperties properties,
             Statements statements) {
         return new ScyllaPollDataDAO(session, objectMapper, properties, statements);
+    }
+
+    /**
+     * task_queue_depth_by_domain. Switched only by conductor.scylla.queue-metrics-enabled (default
+     * true), independently of conductor.workflow-monitor.enabled.
+     */
+    @Bean
+    @ConditionalOnProperty(
+            name = "conductor.scylla.queue-metrics-enabled",
+            havingValue = "true",
+            matchIfMissing = true)
+    public ScyllaQueueDepthMonitor scyllaQueueDepthMonitor(
+            MetadataDAO metadataDAO,
+            ScyllaPollDataDAO pollDataDAO,
+            QueueDAO queueDAO,
+            @Qualifier(SystemTaskRegistry.ASYNC_SYSTEM_TASKS_QUALIFIER)
+                    Set<WorkflowSystemTask> asyncSystemTasks) {
+        return new ScyllaQueueDepthMonitor(metadataDAO, pollDataDAO, queueDAO, asyncSystemTasks);
+    }
+
+    /**
+     * workflow_running, task_queue_depth and task_in_progress without loading every workflow
+     * definition (replaces core WorkflowMonitor on Scylla). Off unless
+     * conductor.scylla.workflow-monitor.enabled=true; set conductor.workflow-monitor.enabled=false
+     * on the same pod.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "conductor.scylla.workflow-monitor.enabled", havingValue = "true")
+    public ScyllaWorkflowMonitor scyllaWorkflowMonitor(
+            MetadataDAO metadataDAO,
+            ExecutionDAO executionDAO,
+            QueueDAO queueDAO,
+            @Value("${conductor.workflow-monitor.metadata-refresh-interval:10}")
+                    int metadataRefreshInterval,
+            @Qualifier(SystemTaskRegistry.ASYNC_SYSTEM_TASKS_QUALIFIER)
+                    Set<WorkflowSystemTask> asyncSystemTasks,
+            @Value("${conductor.workflow-monitor.enabled:true}")
+                    boolean coreWorkflowMonitorEnabled) {
+        return new ScyllaWorkflowMonitor(
+                metadataDAO,
+                executionDAO,
+                queueDAO,
+                metadataRefreshInterval,
+                asyncSystemTasks,
+                coreWorkflowMonitorEnabled);
     }
 
     @Bean

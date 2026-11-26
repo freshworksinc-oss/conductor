@@ -40,6 +40,8 @@ import com.netflix.conductor.dao.WorkflowDefIndexDAO;
 import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.scylla.config.ScyllaProperties;
 import com.netflix.conductor.scylla.dao.ScyllaMetadataDAO;
+import com.netflix.conductor.scylla.metrics.WorkflowMetricInfo;
+import com.netflix.conductor.scylla.metrics.WorkflowMetricInfoSource;
 
 import jakarta.annotation.PostConstruct;
 
@@ -47,7 +49,10 @@ import static com.netflix.conductor.scylla.config.cache.CachingConfig.TASK_DEF_C
 
 @Trace
 public class CacheableMetadataDAO
-        implements MetadataDAO, PaginatedMetadataDAO, WorkflowDefIndexDAO {
+        implements MetadataDAO,
+                PaginatedMetadataDAO,
+                WorkflowDefIndexDAO,
+                WorkflowMetricInfoSource {
 
     private static final String CLASS_NAME = CacheableMetadataDAO.class.getSimpleName();
 
@@ -152,6 +157,12 @@ public class CacheableMetadataDAO
     @Override
     public List<WorkflowDef> getAllWorkflowDefsLatestVersions() {
         return scyllaMetadataDAO.getAllWorkflowDefsLatestVersions();
+    }
+
+    /** Straight to ScyllaMetadataDAO, which parses only ownerApp of each latest definition. */
+    @Override
+    public List<WorkflowMetricInfo> getWorkflowMetricInfo() {
+        return scyllaMetadataDAO.getWorkflowMetricInfo();
     }
 
     // The listings below must reach ScyllaMetadataDAO's own index-based versions. Without these

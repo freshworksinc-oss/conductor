@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.TreeSet;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -39,6 +40,8 @@ import com.netflix.conductor.dao.PaginatedMetadataDAO;
 import com.netflix.conductor.dao.WorkflowDefIndexDAO;
 import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.scylla.config.ScyllaProperties;
+import com.netflix.conductor.scylla.metrics.WorkflowMetricInfo;
+import com.netflix.conductor.scylla.metrics.WorkflowMetricInfoSource;
 import com.netflix.conductor.scylla.util.Statements;
 
 import com.datastax.driver.core.PreparedStatement;
@@ -47,6 +50,9 @@ import com.datastax.driver.core.ResultSetFuture;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.exceptions.DriverException;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import static com.netflix.conductor.common.metadata.tasks.TaskDef.ONE_HOUR;
@@ -58,7 +64,10 @@ import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_NAME_VERS
 
 @Trace
 public class ScyllaMetadataDAO extends ScyllaBaseDAO
-        implements MetadataDAO, PaginatedMetadataDAO, WorkflowDefIndexDAO {
+        implements MetadataDAO,
+                PaginatedMetadataDAO,
+                WorkflowDefIndexDAO,
+                WorkflowMetricInfoSource {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ScyllaMetadataDAO.class);
     private static final String CLASS_NAME = ScyllaMetadataDAO.class.getSimpleName();
@@ -66,6 +75,11 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO
 
     /** Definitions read at the same time when many are needed (a window, not all at once). */
     private static final int READ_CONCURRENCY = 32;
+
+    /** Streaming reads of one field of a definition (no object is bound). Thread safe. */
+    private static final JsonFactory JSON_FACTORY = new JsonFactory();
+
+    private static final String OWNER_APP_FIELD = "ownerApp";
 
     private final WorkflowDefIndex defIndex;
     private final PreparedStatement selectLatestWorkflowDefByNameStatement;
@@ -323,6 +337,61 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO
         return new ArrayList<>(defs);
     }
 
+    /**
+     * Name and ownerApp of the latest version of each workflow, for the workflow monitor.
+     *
+     * <p>Names come from the index. Only the latest definition of each name is read (through the
+     * same window of concurrent queries), and only its {@code ownerApp} is parsed: no {@link
+     * WorkflowDef} is built and nothing is added to the index cache, so what stays on the heap is
+     * one small record per name rather than every definition. When the latest definitions are
+     * already cached with the index they are projected without reading again.
+     */
+    @Override
+    public List<WorkflowMetricInfo> getWorkflowMetricInfo() {
+        WorkflowDefIndex.Snapshot index = defIndex.get();
+        List<WorkflowDef> cached = index.latestDefs();
+        if (cached != null) {
+            List<WorkflowMetricInfo> out = new ArrayList<>(cached.size());
+            cached.forEach(
+                    def -> out.add(new WorkflowMetricInfo(def.getName(), def.getOwnerApp())));
+            return out;
+        }
+        List<WorkflowMetricInfo> out =
+                readDefinitions(
+                        latestKeys(index, index.names()),
+                        (name, json) -> new WorkflowMetricInfo(name, ownerAppOf(name, json)));
+        recordCassandraDaoRequests("getWorkflowMetricInfo");
+        return out;
+    }
+
+    /**
+     * The top-level {@code ownerApp} of a definition's JSON, or null. Stops at the field; nested
+     * objects (tasks, mappings) are skipped without being parsed into values.
+     */
+    @VisibleForTesting
+    static String ownerAppOf(String name, String json) {
+        if (json == null) {
+            return null;
+        }
+        try (JsonParser parser = JSON_FACTORY.createParser(json)) {
+            if (parser.nextToken() != JsonToken.START_OBJECT) {
+                return null;
+            }
+            while (parser.nextToken() == JsonToken.FIELD_NAME) {
+                String field = parser.getCurrentName();
+                JsonToken value = parser.nextToken();
+                if (OWNER_APP_FIELD.equals(field)) {
+                    return value == JsonToken.VALUE_STRING ? parser.getText() : null;
+                }
+                parser.skipChildren();
+            }
+        } catch (Exception e) {
+            // A definition that cannot be parsed only loses its owner tag.
+            LOGGER.debug("Could not read ownerApp of workflow definition {}", name, e);
+        }
+        return null;
+    }
+
     /** Names only, from the index: no definition is read. */
     @Override
     public List<String> getWorkflowNames() {
@@ -450,21 +519,36 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO
      * order of the keys (missing ones skipped).
      */
     private List<WorkflowDef> readWorkflowDefs(List<ImmutablePair<String, Integer>> keys) {
-        List<WorkflowDef> out = new ArrayList<>(keys.size());
-        ArrayDeque<ResultSetFuture> window = new ArrayDeque<>();
+        List<WorkflowDef> out =
+                readDefinitions(keys, (name, json) -> readValue(json, WorkflowDef.class));
+        recordCassandraDaoRequests("getWorkflowDefs");
+        return out;
+    }
+
+    /**
+     * Reads the definitions of {@code keys} through a window of {@link #READ_CONCURRENCY}
+     * concurrent queries and maps each one's JSON as soon as it arrives, so at most a window of raw
+     * definitions is held at a time. Keys without a row are skipped.
+     */
+    private <T> List<T> readDefinitions(
+            List<ImmutablePair<String, Integer>> keys, BiFunction<String, String, T> mapper) {
+        List<T> out = new ArrayList<>(keys.size());
+        ArrayDeque<ImmutablePair<String, ResultSetFuture>> window = new ArrayDeque<>();
         try {
             for (ImmutablePair<String, Integer> key : keys) {
                 if (window.size() >= READ_CONCURRENCY) {
-                    addRow(out, window.poll());
+                    addRow(out, window.poll(), mapper);
                 }
                 window.add(
-                        session.executeAsync(
-                                selectWorkflowDefStatement.bind(key.getLeft(), key.getRight())));
+                        ImmutablePair.of(
+                                key.getLeft(),
+                                session.executeAsync(
+                                        selectWorkflowDefStatement.bind(
+                                                key.getLeft(), key.getRight()))));
             }
             while (!window.isEmpty()) {
-                addRow(out, window.poll());
+                addRow(out, window.poll(), mapper);
             }
-            recordCassandraDaoRequests("getWorkflowDefs");
             return out;
         } catch (DriverException e) {
             Monitors.error(CLASS_NAME, "getWorkflowDefs");
@@ -474,10 +558,13 @@ public class ScyllaMetadataDAO extends ScyllaBaseDAO
         }
     }
 
-    private void addRow(List<WorkflowDef> out, ResultSetFuture future) {
-        Row row = future.getUninterruptibly().one();
+    private static <T> void addRow(
+            List<T> out,
+            ImmutablePair<String, ResultSetFuture> pending,
+            BiFunction<String, String, T> mapper) {
+        Row row = pending.getRight().getUninterruptibly().one();
         if (row != null) {
-            out.add(readValue(row.getString(WORKFLOW_DEFINITION_KEY), WorkflowDef.class));
+            out.add(mapper.apply(pending.getLeft(), row.getString(WORKFLOW_DEFINITION_KEY)));
         }
     }
 

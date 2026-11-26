@@ -97,6 +97,20 @@ public class ScyllaProperties {
     @DurationUnit(ChronoUnit.SECONDS)
     private Duration eventExecutionPersistenceTtl = Duration.ZERO;
 
+    /**
+     * Switch for the queue/execution metrics on Scylla (conductor.scylla.queue-metrics-enabled):
+     *
+     * <ul>
+     *   <li>task_queue_depth_by_domain (ScyllaQueueDepthMonitor) — depth of every queue, per domain
+     *   <li>workflow_running — tracks running workflows per type in workflow_pending
+     *   <li>task_in_progress — tracks IN_PROGRESS tasks per task def in task_def_limit
+     * </ul>
+     *
+     * The tracking mirrors the Postgres DAO and costs one extra write per workflow update and per
+     * task IN_PROGRESS / terminal transition. false restores the previous behaviour.
+     */
+    private boolean queueMetricsEnabled = true;
+
     public String getHostAddress() {
         return hostAddress;
     }
@@ -239,5 +253,13 @@ public class ScyllaProperties {
 
     public void setEventExecutionPersistenceTtl(Duration eventExecutionPersistenceTtl) {
         this.eventExecutionPersistenceTtl = eventExecutionPersistenceTtl;
+    }
+
+    public boolean isQueueMetricsEnabled() {
+        return queueMetricsEnabled;
+    }
+
+    public void setQueueMetricsEnabled(boolean queueMetricsEnabled) {
+        this.queueMetricsEnabled = queueMetricsEnabled;
     }
 }

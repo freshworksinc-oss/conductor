@@ -7,6 +7,13 @@
     {
       "name": "conductor.scylla.read-consistency-level",
       "defaultValue": "LOCAL_QUORUM"
+    },
+    {
+      "name": "conductor.scylla.workflow-monitor.enabled",
+      "type": "java.lang.Boolean",
+      "description": "Publishes workflow_running, task_queue_depth and task_in_progress from Scylla without loading every workflow definition (replaces core WorkflowMonitor). Enable on one pod and set conductor.workflow-monitor.enabled=false there.",
+      "defaultValue": false,
+      "sourceType": "com.netflix.conductor.scylla.metrics.ScyllaWorkflowMonitor"
     }
   ]
 }

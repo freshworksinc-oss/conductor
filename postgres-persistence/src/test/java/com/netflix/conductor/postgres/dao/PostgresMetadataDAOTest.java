@@ -43,8 +43,6 @@ import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.core.exception.ConflictException;
 import com.netflix.conductor.core.exception.NotFoundException;
-import com.netflix.conductor.dao.TaskMetricInfo;
-import com.netflix.conductor.dao.WorkflowMetricInfo;
 import com.netflix.conductor.postgres.config.PostgresConfiguration;
 
 import static org.junit.Assert.assertEquals;
@@ -599,56 +597,5 @@ public class PostgresMetadataDAOTest {
         def.setName(name);
         def.setVersion(version);
         return def;
-    }
-
-    @Test
-    public void testGetWorkflowMetricInfo() {
-        WorkflowDef def = new WorkflowDef();
-        def.setName("metricWf");
-        def.setVersion(1);
-        def.setOwnerApp("ownerV1");
-        metadataDAO.createWorkflowDef(def);
-
-        def.setVersion(2);
-        def.setOwnerApp("ownerV2");
-        metadataDAO.createWorkflowDef(def);
-
-        Map<String, WorkflowMetricInfo> byName =
-                metadataDAO.getWorkflowMetricInfo().stream()
-                        .collect(Collectors.toMap(WorkflowMetricInfo::name, Function.identity()));
-
-        // Only the latest version is projected, carrying its ownerApp.
-        assertTrue(byName.containsKey("metricWf"));
-        assertEquals("ownerV2", byName.get("metricWf").ownerApp());
-
-        // The suite shares one database and several tests assert on totals.
-        metadataDAO.removeWorkflowDef("metricWf", 2);
-        metadataDAO.removeWorkflowDef("metricWf", 1);
-    }
-
-    @Test
-    public void testGetTaskMetricInfo() {
-        TaskDef limited = new TaskDef();
-        limited.setName("limitedTask");
-        limited.setOwnerApp("taskOwner");
-        limited.setConcurrentExecLimit(7);
-        metadataDAO.createTaskDef(limited);
-
-        TaskDef unlimited = new TaskDef();
-        unlimited.setName("unlimitedTask");
-        unlimited.setOwnerApp("taskOwner");
-        metadataDAO.createTaskDef(unlimited);
-
-        Map<String, TaskMetricInfo> byName =
-                metadataDAO.getTaskMetricInfo().stream()
-                        .collect(Collectors.toMap(TaskMetricInfo::name, Function.identity()));
-
-        assertEquals("taskOwner", byName.get("limitedTask").ownerApp());
-        assertEquals(7, byName.get("limitedTask").concurrencyLimit());
-        // A missing concurrentExecLimit projects to 0.
-        assertEquals(0, byName.get("unlimitedTask").concurrencyLimit());
-
-        metadataDAO.removeTaskDef("limitedTask");
-        metadataDAO.removeTaskDef("unlimitedTask");
     }
 }

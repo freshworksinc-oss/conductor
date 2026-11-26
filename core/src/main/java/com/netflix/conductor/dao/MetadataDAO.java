@@ -125,33 +125,4 @@ public interface MetadataDAO {
                         })
                 .collect(Collectors.toList());
     }
-
-    /**
-     * Name and owner app of the latest version of each workflow definition, for the workflow
-     * monitor. The default projects from {@link #getAllWorkflowDefsLatestVersions()}; stores that
-     * can read the fields without the definition body should override it.
-     *
-     * @return one entry per workflow name
-     */
-    default List<WorkflowMetricInfo> getWorkflowMetricInfo() {
-        return getAllWorkflowDefsLatestVersions().stream()
-                .map(def -> new WorkflowMetricInfo(def.getName(), def.getOwnerApp()))
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Name, owner app and concurrency limit of each task definition, for the workflow monitor. The
-     * default projects from {@link #getAllTaskDefs()}; stores that can read the fields without the
-     * definition body should override it.
-     *
-     * @return one entry per task definition
-     */
-    default List<TaskMetricInfo> getTaskMetricInfo() {
-        return getAllTaskDefs().stream()
-                .map(
-                        def ->
-                                new TaskMetricInfo(
-                                        def.getName(), def.getOwnerApp(), def.concurrencyLimit()))
-                .collect(Collectors.toList());
-    }
 }

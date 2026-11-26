@@ -38,9 +38,10 @@ import com.netflix.conductor.core.exception.TransientException;
 import com.netflix.conductor.dao.MetadataDAO;
 import com.netflix.conductor.dao.PaginatedMetadataDAO;
 import com.netflix.conductor.dao.WorkflowDefIndexDAO;
-import com.netflix.conductor.dao.WorkflowMetricInfo;
 import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.scylla.config.ScyllaProperties;
+import com.netflix.conductor.scylla.metrics.WorkflowMetricInfo;
+import com.netflix.conductor.scylla.metrics.WorkflowMetricInfoSource;
 import com.netflix.conductor.scylla.util.Statements;
 
 import com.datastax.driver.core.PreparedStatement;
@@ -63,7 +64,10 @@ import static com.netflix.conductor.scylla.util.Constants.WORKFLOW_DEF_NAME_VERS
 
 @Trace
 public class ScyllaMetadataDAO extends ScyllaBaseDAO
-        implements MetadataDAO, PaginatedMetadataDAO, WorkflowDefIndexDAO {
+        implements MetadataDAO,
+                PaginatedMetadataDAO,
+                WorkflowDefIndexDAO,
+                WorkflowMetricInfoSource {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ScyllaMetadataDAO.class);
     private static final String CLASS_NAME = ScyllaMetadataDAO.class.getSimpleName();

@@ -24,8 +24,6 @@ import com.netflix.conductor.common.metadata.workflow.WorkflowDef;
 import com.netflix.conductor.common.metadata.workflow.WorkflowDefSummary;
 import com.netflix.conductor.common.model.BulkResponse;
 import com.netflix.conductor.common.run.SearchResult;
-import com.netflix.conductor.dao.TaskMetricInfo;
-import com.netflix.conductor.dao.WorkflowMetricInfo;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -200,14 +198,4 @@ public interface MetadataService {
      */
     SearchResult<WorkflowDef> searchWorkflowDefsLatestVersions(
             int start, int size, String filterField, String filterValue);
-
-    /**
-     * @return name and owner app of the latest version of each workflow definition, for metrics
-     */
-    List<WorkflowMetricInfo> getWorkflowMetricInfo();
-
-    /**
-     * @return name, owner app and concurrency limit of each task definition, for metrics
-     */
-    List<TaskMetricInfo> getTaskMetricInfo();
 }

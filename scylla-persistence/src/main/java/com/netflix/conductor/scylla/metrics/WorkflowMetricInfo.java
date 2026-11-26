@@ -10,27 +10,10 @@
  * an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
  * specific language governing permissions and limitations under the License.
  */
-package com.netflix.conductor.metrics;
+package com.netflix.conductor.scylla.metrics;
 
-import org.junit.After;
-import org.junit.Test;
-
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
-
-public class EventMetricsConfigurationTest {
-
-    @After
-    public void restore() {
-        Monitors.setEventMetricsEnabled(true);
-    }
-
-    @Test
-    public void appliesThePropertyToMonitors() {
-        new EventMetricsConfiguration(false);
-        assertFalse(Monitors.isEventMetricsEnabled());
-
-        new EventMetricsConfiguration(true);
-        assertTrue(Monitors.isEventMetricsEnabled());
-    }
-}
+/**
+ * The fields of a workflow definition's latest version that {@link ScyllaWorkflowMonitor} publishes
+ * (workflow_running), so the full definition is not kept for metrics.
+ */
+public record WorkflowMetricInfo(String name, String ownerApp) {}

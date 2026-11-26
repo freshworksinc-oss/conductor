@@ -37,10 +37,11 @@ import com.netflix.conductor.common.run.SearchResult;
 import com.netflix.conductor.dao.MetadataDAO;
 import com.netflix.conductor.dao.PaginatedMetadataDAO;
 import com.netflix.conductor.dao.WorkflowDefIndexDAO;
-import com.netflix.conductor.dao.WorkflowMetricInfo;
 import com.netflix.conductor.metrics.Monitors;
 import com.netflix.conductor.scylla.config.ScyllaProperties;
 import com.netflix.conductor.scylla.dao.ScyllaMetadataDAO;
+import com.netflix.conductor.scylla.metrics.WorkflowMetricInfo;
+import com.netflix.conductor.scylla.metrics.WorkflowMetricInfoSource;
 
 import jakarta.annotation.PostConstruct;
 
@@ -48,7 +49,10 @@ import static com.netflix.conductor.scylla.config.cache.CachingConfig.TASK_DEF_C
 
 @Trace
 public class CacheableMetadataDAO
-        implements MetadataDAO, PaginatedMetadataDAO, WorkflowDefIndexDAO {
+        implements MetadataDAO,
+                PaginatedMetadataDAO,
+                WorkflowDefIndexDAO,
+                WorkflowMetricInfoSource {
 
     private static final String CLASS_NAME = CacheableMetadataDAO.class.getSimpleName();
 
@@ -155,11 +159,7 @@ public class CacheableMetadataDAO
         return scyllaMetadataDAO.getAllWorkflowDefsLatestVersions();
     }
 
-    /**
-     * Straight to ScyllaMetadataDAO, which parses only ownerApp. The MetadataDAO default would
-     * build every latest definition. Task metric info keeps the default: it projects from
-     * getAllTaskDefs(), which this class serves from its cache.
-     */
+    /** Straight to ScyllaMetadataDAO, which parses only ownerApp of each latest definition. */
     @Override
     public List<WorkflowMetricInfo> getWorkflowMetricInfo() {
         return scyllaMetadataDAO.getWorkflowMetricInfo();

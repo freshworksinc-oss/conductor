@@ -50,13 +50,6 @@
       "sourceType": "com.netflix.conductor.metrics.WorkflowMonitor"
     },
     {
-      "name": "conductor.metrics.event-metrics.enabled",
-      "type": "java.lang.Boolean",
-      "description": "Records event metrics: the counters, timers and distribution summaries recorded as work happens (task polls, executions, queue waits, errors, Redis call timings). Turn off on pods that only publish WorkflowMonitor gauges. Gauges are not affected.",
-      "defaultValue": "true",
-      "sourceType": "com.netflix.conductor.metrics.EventMetricsConfiguration"
-    },
-    {
       "name": "conductor.workflow-monitor.stats.initial-delay",
       "type": "java.lang.Integer",
       "description": "The initial delay (in milliseconds) at which the workflow monitor publishes workflow and task metrics."
